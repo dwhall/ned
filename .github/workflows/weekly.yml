@@ -1,0 +1,60 @@
+# Once a week (and when asked): ned under AddressSanitizer, fed random keys — memory errors that Nim's own checks do
+# not see (a copyMem past the end, a use after free behind a cast or across threads) stop it with a report.
+#
+#   fuzz (AddressSanitizer) — a build with stack traces, bounds checks and gcc's -fsanitize=address, then
+#                             tests/fuzz/batch.sh on six modes; fails on a crash, a hang, an internal error or a
+#                             sanitizer report (uploaded with the fuzzer's logs)
+
+name: weekly
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"         # (Mondays, 03:17 UTC)
+  workflow_dispatch:
+    inputs:
+      fuzz_seconds:
+        description: "seconds of fuzzing for each mode"
+        default: "240"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz-asan:
+    name: fuzz (AddressSanitizer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: stable
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: sudo apt-get update && sudo apt-get install -y tmux
+      - name: Build with AddressSanitizer
+        run: >
+          nim c --stackTrace:on --lineTrace:on --checks:on --hints:off
+          --passC:"-fsanitize=address -fno-omit-frame-pointer" --passL:"-fsanitize=address"
+          -o:ned_asan src/ned.nim
+      - name: Fuzz
+        env:
+          NEDBIN: ./ned_asan
+          # (no leak check: ned leaves without freeing what it holds; its own crash note keeps SIGSEGV)
+          ASAN_OPTIONS: detect_leaks=0:handle_segv=0:log_path=/tmp/ned-asan/report
+        run: |
+          mkdir -p /tmp/ned-asan
+          code=0
+          tests/fuzz/batch.sh ${{ inputs.fuzz_seconds || '240' }} mixed palette hex vim helix c || code=$?
+          if ls /tmp/ned-asan/report.* >/dev/null 2>&1; then
+            echo "::error::AddressSanitizer reported a memory error"
+            head -80 /tmp/ned-asan/report.*
+            code=1
+          fi
+          exit $code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fuzz-asan-logs
+          path: |
+            /tmp/ned-fuzz-*-logs
+            /tmp/ned-asan

@@ -93,6 +93,8 @@ proc initCommands() =
   add("Suspend ned (fg brings it back)", "Ctrl+Z with the vim, helix and emacs keys", suspendNed())
   add("Toggle file tree", "", toggleTree())
   add("Nim: exports nothing uses…", "", cmdUnusedExports())
+  add("Nim: find a routine by its signature…", "what it takes and gives: (string, char) -> seq[string] finds split",
+      cmdFindBySignature())
   add("Nim: change signature…", "", cmdChangeSignature())
   add("Nim: inline this proc", "", cmdInlineProc())
   add("Nim: move to another module…", "", cmdMoveToModule())

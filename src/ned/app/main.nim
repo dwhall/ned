@@ -219,6 +219,7 @@ proc mainLoop() =
     if astOn or docPvSrc >= 0: timeout = min(timeout, 500)
     if lfBusy(): timeout = min(timeout, 30)            # (the viewer's index, a search: on while it lasts)   # (the AST view, the docs preview: after a pause)
     if workDeferred: timeout = min(timeout, 5)
+    if repOn: timeout = min(timeout, repDueMs())     # (ned --replay: the recording's next key)
     if frameHeld: timeout = min(timeout, max(1, (if slowTerminal(): 33 else: 16) - int(msSince(frameAt))))
     if cfgWebEngine != "off" and cb0.path.len > 0 and cb0.lang != nil and
        (webFamily(cb0.lang.id).len > 0 or cb0.lang.mode == lmNim) and webChkAt.getOrDefault(cb0.id, -1) != cb0.changeId:
@@ -276,8 +277,10 @@ proc mainLoop() =
       except CatchableError as e: dbgEnd("debugger error: " & e.msg)
     if (fds[0].revents and (POLLHUP or POLLERR or POLLNVAL)) != 0 and (fds[0].revents and POLLIN) == 0:
       ttyGone = true
-    if 0.cint in ready:
+    if 0.cint in ready or (repOn and repDueMs() == 0):
+      let playing = repOn
       discard readInput()
+      if playing and not repOn: toast("The recording ends here: the keys are yours again", 1)
       timedWork("keys and mouse"): processInput(false)
     elif inputBacklog:
       timedWork("keys and mouse"): processInput(false)
@@ -637,6 +640,15 @@ proc usage() =
   echo "                        Nim's file(line, col) Error: …), under NAME; sending again replaces them"
   echo "  --remote-get WHAT     print file, line, col, selection, word, root, files or text of the running ned"
   echo "  --remote-list         the neds running for you: process, project, files"
+  echo "  --safe                start with ned's default settings, no plugins and nothing kept from before"
+  echo "                        (your settings and state are left as they are): does it happen then too?"
+  echo "  --record FILE [FILE…] record this session into FILE: every key, what the terminal answers, its size"
+  echo "                        and the text of the files you open — to show a bug as it happened. Your"
+  echo "                        settings apply (secrets left out of the recording); the last session is not"
+  echo "                        brought back. The recording is text: read it before you send it"
+  echo "  --replay FILE [FOLDER] play a recording back, in a folder of its own (a copy of FOLDER, the project,"
+  echo "                        when it needs one) with the recording's settings — on Linux kept inside that"
+  echo "                        folder with no network, since it types again what was typed. Ctrl+Q stops it"
   echo "  --startup-time [FILE…] start as usual, then quit once settled and print how long each step took"
   echo "                        and the memory used (the CI benchmark reads it)"
   echo "  --                    the rest are file names, even when they start with -"
@@ -812,6 +824,50 @@ proc remoteMain(targets: seq[(string, int, int)], op, arg: string, explicit, wai
     code = max(code, ctlClient(sock, %*{"cmd": "open", "files": files, "wait": wait}, wait))
   code
 
+proc ownSession(safe: bool, rep: string, targets: var seq[(string, int, int)]): string =
+  ## --safe, --record and --replay run a session of its own: a folder (the one returned, removed when ned leaves) for
+  ## what ned keeps between runs, so nothing of an earlier session comes back and nothing of this one stays — and for
+  ## --safe and --replay the settings too (yours are not read: ned's defaults, or the recording's). A replay also gets
+  ## its project there (a copy of the folder given, else an empty one), the recording's arguments and terminal
+  ## environment, a cache and a temporary folder of its own, and — where the system has Landlock — limits that keep
+  ## it inside that folder with no network: a recording types again what was typed, in ned's terminal too (the
+  ## emptied folder itself stays then: removing it is a change to the folder above; a later ned sweeps it)
+  result = privDir() / ("session-" & $getCurrentProcessId() & "-0")
+  try:
+    removeDir(result)
+    createDir(result / "state")
+    putEnv("XDG_STATE_HOME", result / "state")
+    if safe or rep.len > 0:
+      createDir(result / "config" / AppName)
+      putEnv("XDG_CONFIG_HOME", result / "config")
+    if rep.len == 0: return
+    var hdr: JsonNode
+    let err = repLoad(rep, hdr)
+    if err.len > 0: quit "ned: " & rep & ": " & err, 2
+    let proj = result / "project"
+    if targets.len > 0 and dirExists(targets[0][0]): copyDir(targets[0][0], proj) else: createDir(proj)
+    writeFile(result / "config" / AppName / "config.json", hdr{"config"}.getStr("{}"))
+    for n in RecEnv:
+      let v = hdr{"env"}{n}
+      if v != nil and v.kind == JString: putEnv(n, v.getStr) else: delEnv(n)
+    createDir(result / "cache")
+    putEnv("XDG_CACHE_HOME", result / "cache")       # (Nim's and ned's caches: inside the limits)
+    createDir(result / "tmp")
+    putEnv("TMPDIR", result / "tmp")                 # (and what ned and its tools write for a moment)
+    privDirCache = ""
+    setCurrentDir(proj)
+    targets.setLen(0)
+    for a in hdr{"args"}.getElems:
+      if a.kind == JArray and a.len == 3 and recSafePath(a[0].getStr):
+        let rel = a[0].getStr
+        targets.add ((if rel == ".": proj else: proj / rel), a[1].getInt(-1), a[2].getInt(-1))
+    let why = landlockApply(SandboxPolicy(read: sandboxToolReads(), write: @[result]))
+    repNote = "ned: played back " & rep & " (made by ned " & hdr{"ned"}.getStr & ", " & $repEvents.len & " events)" &
+              (if why.len > 0: " — not kept inside its folder: " & why else: "")
+    repStart(proj)
+  except CatchableError as e:
+    quit "ned: " & e.msg, 2
+
 proc main() =
   ## starts ned. Reads the command line — options, and files as FILE:LINE:COL or +LINE FILE — and runs the ones that do
   ## something else and exit (help, version, --check, --format, --lint, --update, --sandbox, --reset, --bench, the
@@ -826,6 +882,9 @@ proc main() =
   var pendingLine = -1
   var optsDone, wantStdin, doCheck = false
   var wantNew, wantWait, wantRemote = false
+  var safeMode = false                      # --safe: default settings, no plugins, nothing kept from before
+  var recArg, repArg = ""                   # --record FILE, --replay FILE
+  var ownDir = ""                           # … and the folder such a session keeps its own things in
   var headless = false                      # -es: no terminal, a case of keys in, its answer out
   var headlessKeys, headlessStart = ""      # --keys KEYS, --start LINE:COL
   var remoteOp, remoteArg = ""            # --remote-command NAME, --remote-message TEXT, --remote-get WHAT …
@@ -899,6 +958,11 @@ proc main() =
         headlessStart = cl[ai]
         inc ai
       of "--new": wantNew = true
+      of "--safe": safeMode = true
+      of "--record", "--replay":
+        if ai >= cl.len: quit "ned: " & a & " needs a file — see ned --help", 2
+        if a == "--record": recArg = absolutePath(cl[ai]) else: repArg = absolutePath(cl[ai])
+        inc ai
       of "--wait": wantWait = true
       of "--remote": wantRemote = true
       of "--remote-list": remoteOp = "list"
@@ -939,6 +1003,9 @@ proc main() =
   smark("command line")
   if headless:
     quit headlessMain(targets, headlessKeys, headlessStart)
+  if safeMode or recArg.len > 0 or repArg.len > 0:
+    wantNew = true
+    ownDir = ownSession(safeMode, repArg, targets)
   if remoteOp.len > 0 or wantRemote or (not wantNew and not doCheck and not startTrace and getEnv("NED_SOCKET").len > 0):
     let code = remoteMain(targets, remoteOp, remoteArg, wantRemote, wantWait, wantStdin)
     if code >= 0: quit code
@@ -992,7 +1059,7 @@ proc main() =
       rootDir = t[0]
       dirArg = true
       break
-  if not dirArg and targets.len > 0 and not isProjectDir(rootDir):
+  if not dirArg and targets.len > 0 and not isProjectDir(rootDir) and repArg.len == 0:   # (a replay: its own folder)
     let r = projectRootOf(targets[0][0])
     if r.len > 0: rootDir = r
     elif rootDir == getHomeDir().normalizedPath.strip(leading = false, chars = {'/'}) or rootDir == "/":
@@ -1004,6 +1071,15 @@ proc main() =
   loadConfig()
   applyNimToolchain()                 # (the project's Nim first on PATH, before anything is started)
   smark("settings")
+  if recArg.len > 0:
+    # (ned --record: from here on, what the terminal sends and the files read)
+    var args = newJArray()
+    for t in targets:
+      let rel = if t[0] == rootDir: "." elif t[0].startsWith(rootDir & "/"): t[0][rootDir.len + 1 .. ^1] else: ""
+      if rel.len > 0: args.add %*[rel, t[1], t[2]]
+    let err = recStart(recArg, rootDir, args,
+                       (try: redactSecrets(recConfigText(readFile(configFile()))) except CatchableError: "{}"))
+    if err.len > 0: quit "ned: --record: " & err, 2
   applyTheme(cfgThemeName)
   themeFollowers()
   smark("theme")
@@ -1117,6 +1193,12 @@ proc main() =
   for j in jobs:
     if not j.done: killProc(j.pr)
   resetFinish()                      # (Reset everything: the parts removed, ned started again)
+  if ownDir.len > 0:
+    # (--safe, --record, --replay: nothing of the session stays; what was recorded or played is said)
+    try: removeDir(ownDir)
+    except CatchableError: discard
+    for said in [recDone(), repNote]:
+      if said.len > 0: echo said
   if startTrace:
     # the report: each step with the time it took, the memory at the first frame and once settled
     var o = AppName & " " & Version & " — startup (ms since the program started)\n"

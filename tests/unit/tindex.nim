@@ -998,4 +998,51 @@ suite "a file's stamp (6.49)":
     nxStatForget(p)
     check nxLoad(p).syms.mapIt(it.name) == @["two"]
 
+suite "a routine by its signature (6.50)":
+  test "the types it takes, in any order, and the type it gives":
+    let (f, _) = fixture("import std/strutils\nproc addTwo(a, b: int): int = a + b\n" &
+                         "proc label(n: int, pre: string): string = pre & $n\nproc noise(c: char): bool = c == 'x'\n")
+    let sc = nxScope(f)
+    # the names of the routines that fit a signature, the closest first
+    proc names(q: string): seq[string] = nxBySignature(f, sc, q).mapIt(it[0].sym.name)
+    check "split" in names("(string, char) -> seq[string]")
+    check "split" in names("string, char -> seq[string]")           # (without the brackets)
+    check "addTwo" in names("(int, int) -> int")
+    check names("(int, int) -> int")[0] == "addTwo"                 # (of those that fit as well, this file's first)
+    check "label" in names("(string, int) -> string")               # (any order)
+    check "label" in names("(pre: string, n: int): string")         # (as a header is written)
+    check "splitLines" in names("-> seq[string]")                   # (only what it gives)
+    check "noise" in names("(char) -> bool")
+    check "addTwo" notin names("(char) -> bool")
+    check names("(float, float, float, float, float) -> Banana").len == 0
+  test "what is typed is read as types":
+    var ps: seq[string]
+    var r = ""
+    check nxParseSignature("(seq[int], Table[string, int]) -> bool", ps, r)
+    check ps == @["seq[int]", "Table[string, int]"] and r == "bool"
+    ps.setLen(0)
+    r = ""
+    check not nxParseSignature("  ", ps, r)
+
+suite "found by the grades against the compiler (6.50)":
+  test "a long literal: an array's length and a table's type survive the value kept short":
+    var arr = "const Big = ["
+    for i in 0 ..< 80: arr.add $i & ", "
+    arr.add "80]\n"
+    var tab = "const Sizes = {"
+    for i in 0 ..< 40: tab.add "\"key" & $i & "\": " & $i & ", "
+    tab.add "\"last\": 1}.toTable\n"
+    let (f, ls) = fixture("import std/tables\n" & arr & tab & "proc go() =\n  let a = Big\n  let n = Sizes[\"last\"]\n" &
+                          "  echo a.len, n\n")
+    let sc = nxScope(f)
+    check nxTypeOfExpr(f, sc, nxLocals(f, ls, 6, 0), "Big", 6, 0).typ == "array[81, int]"       # (was array[2, int])
+    check nxTypeOfExpr(f, sc, nxLocals(f, ls, 6, 0), "Sizes", 6, 0).typ == "Table[string, int]"  # (was none)
+    check nxTypeOfExpr(f, sc, nxLocals(f, ls, 6, 0), "Sizes[\"last\"]", 6, 0).typ == "int"
+    check nxShortValue("[" & "1, ".repeat(100) & "1]") == "[1, … 100 more]"
+    check nxShortValue("@[" & "\"a\", ".repeat(70) & "\"z\"]") == "@[\"a\", … 70 more]"
+    check nxItemsLeftOut("… 53 more") == 53 and nxItemsLeftOut(" x") == 1 and nxItemsLeftOut("…") == 1
+  test "a `static string` parameter takes a string: fmt after a string literal":
+    let (f, ls) = fixture("import std/strformat\nlet x = 7\necho \"v {x}\".\n")
+    check "fmt" in labels(nxComplete(f, ls, 2, ls[2].len))
+
 removeDir(dir)

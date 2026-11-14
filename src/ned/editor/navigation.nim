@@ -720,6 +720,7 @@ proc cmdHover(auto = false) =
       discard nsRequest(b, (if auto: nsAutoHover else: nsHover), p)
       if lines.len > 0: showHoverAuto(hoverPrefix, auto)
     elif nimDocFor(w).len > 0: showHoverAuto(hoverPrefix & nimDocFor(w), auto)
+    elif (let nh = nimNifHover(b, p); nh.len > 0): showHoverAuto(hoverPrefix & nh, auto)   # (the compiler's reading)
     elif compilerAnswer(b, (if auto: nsAutoHover else: nsHover), p):          # (nimsuggest off: the compiler, once)
       if lines.len > 0: showHoverAuto(hoverPrefix, auto)
     elif lines.len > 0: showHoverAuto(lines.join("\n"), auto)

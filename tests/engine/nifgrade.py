@@ -3,10 +3,17 @@
 resolved to its declaration — the answer for every use of a module's routine, type, constant, global or field in a
 project. Each is asked of ned's engine (the driver build.sh makes) at the same place; they should agree.
 
+The types too: the NIF has the type the compiler gave every `let` and `var`; where one is written without its
+type, the engine's type hint there should be the same type (as ned itself reads the NIF: the driver's `nifhints`).
+
 Usage: nifgrade.py MAIN.nim [--nim PATH/TO/nim-2.4] [--driver ned-engine] [--max N] [--min PERCENT] [--show N]
+                            [--min-types PERCENT]
 Only the project's own files are graded (not the Nim library), and only a name written once on its line and not on
-the lines beside it (the NIF's places are coarse: a node can have the line of the one before it). Exit 1 when the engine agrees less often than --min (default 0: report only)."""
+the lines beside it (the NIF's places are coarse: a node can have the line of the one before it). Exit 1 when the
+engine agrees less often than --min on the definitions or --min-types on the types (default 0: report only)."""
 import json, os, re, subprocess, sys, tempfile, collections
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from typenorm import normT
 
 args = sys.argv[1:]
 def opt(name, default):
@@ -17,6 +24,7 @@ NIM = opt('--nim', 'nim')
 DRIVER = opt('--driver', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ned-engine'))
 MAX = int(opt('--max', '4000'))
 MIN = float(opt('--min', '0'))
+MIN_TYPES = float(opt('--min-types', '0'))
 SHOW = int(opt('--show', '25'))
 if not args: sys.exit(__doc__)
 MAIN = os.path.abspath(args[0])
@@ -105,14 +113,17 @@ def main():
                        capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit('nim nif failed:\n' + (r.stdout + r.stderr)[-2000:])
+    open(os.path.join(cache, 'main.txt'), 'w').write(MAIN)     # (as ned leaves it: the NIF's paths are from its folder)
     defs = {}                     # module symbol → (file, line, col)
     uses = []                     # (file, line, symbol)
+    typed = set()                 # (a NIF, a project file whose lets and vars it declares)
     for f in os.listdir(cache):
         if not f.endswith('.nim2.nif'): continue
         for atom, is_def, tag, src, line, col, exact in parse(open(os.path.join(cache, f), encoding='utf-8', errors='replace').read()):
             if atom.count('.') < 2 or '`' in atom or not re.match(r'[A-Za-z_\x80-\xff]', atom): continue
             path = os.path.normpath(src if os.path.isabs(src) else os.path.join(MAINDIR, src)) if src else ''
             if not path or line < 0: continue
+            if is_def and tag in ('let', 'var') and path.startswith(MAINDIR + os.sep): typed.add((os.path.join(cache, f), path))
             if is_def:
                 if tag in ('proc', 'func', 'iterator', 'converter', 'method', 'template', 'macro', 'type', 'const',
                            'let', 'var', 'fld', 'efld'):
@@ -147,14 +158,19 @@ def main():
             c = c[:c.index('#')] if '#' in c else c
             return any(norm(m.group()) == norm(name) for m in re.finditer(r'[A-Za-z_\x80-\xff][\w\x80-\xff]*', c))
         if near(line - 1) or near(line + 1): continue
-        # (`for x in items:` names a variable; the NIF has the `items` iterator the compiler called on it)
-        if name in ('items', 'pairs', 'mitems', 'mpairs') and re.search(r'\bin\s+' + name + r'\s*:', code): continue
+        # (`for x in items:` names a variable; the NIF has the `items` iterator the compiler called on it — and the
+        # iterator a `for` on this line or the one above calls without naming it, where the line has a variable so named)
+        if name in ('items', 'pairs', 'mitems', 'mpairs') and (re.search(r'\bin\s+' + name + r'\s*:', code) or
+           re.search(r'\bfor\b.*\bin\b', code) or (line > 0 and re.search(r'^\s*for\b.*\bin\b', ls[line - 1]))): continue
         if defs[sym][0] == path and defs[sym][1] == line: continue          # (the declaration itself)
         # (the engine's columns are bytes, as Nim's: a — or an é before the name counts for more than one)
         asks.append((path, line, len(ls[line][:hits[0]].encode('utf-8')), sym))
     asks = asks[:MAX]
     drv = subprocess.Popen([DRIVER], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
                            bufsize=1)
+    # (the first file asked about is the one whose `nim dump` gives the defines: the project's main, with its .nims)
+    drv.stdin.write(json.dumps({'cmd': 'syms', 'path': MAIN, 'line': 0, 'col': 0}) + '\n'); drv.stdin.flush()
+    drv.stdout.readline()
     agree = 0; wrong = []; none = 0; tmpl = 0
     kinds = collections.Counter()
     for path, line, col, sym in asks:
@@ -200,7 +216,38 @@ def main():
         else:
             if not got: none += 1
             wrong.append((path, line, col, sym, want, got))
+    # the types: where the compiler's NIF has one for a let or var written without it, the engine's hint there
+    def eng(q):
+        drv.stdin.write(json.dumps(q) + '\n'); drv.stdin.flush()
+        return json.loads(drv.stdout.readline())
+    t_same = 0; t_bad = []
+    hints_of = {}
+    for nif, path in sorted(typed):
+        if path not in hints_of:
+            hints_of[path] = {(l, c): lab for l, c, lab in eng({'cmd': 'hints', 'path': path}).get('hints', [])}
+        for l, c, t in eng({'cmd': 'nifhints', 'path': path, 'nif': nif}).get('hints', []):
+            ls = lines_of.get(path)
+            if ls is None:
+                try: ls = lines_of[path] = open(path, encoding='utf-8', errors='replace').read().split('\n')
+                except OSError: ls = lines_of[path] = []
+            # (only where a hint goes: the type not written, the value not a literal that shows it — as ned draws them)
+            rest = ls[l][c:].lstrip() if l < len(ls) else ':'
+            if rest[:1] in (':', '{', ',', ')') or not rest.startswith('=') or re.match(r'=\s*[0-9"\']', rest): continue
+            want = normT(t)
+            if not want or 'typeof' in want or 'untyped' in want: continue
+            got = hints_of[path].get((l, c))
+            if got is not None and (normT(got) == want or (got.endswith('…') and want.startswith(normT(got[:-1])))):
+                t_same += 1
+            else: t_bad.append((path, l, c, t, got))
     drv.stdin.close(); drv.wait()
+    t_total = t_same + len(t_bad)
+    t_pct = 100.0 * t_same / t_total if t_total else 100.0
+    t_none = sum(1 for x in t_bad if x[4] is None)
+    print(f'{t_total} lets and vars without a written type: the engine gives the compiler\'s type on {t_same} '
+          f'({t_pct:.1f}%), another on {len(t_bad) - t_none}, none on {t_none}')
+    for path, l, c, t, got in t_bad[:SHOW]:
+        print(f'  {os.path.relpath(path, MAINDIR)}:{l + 1}:{c + 1} compiler {t!r}, engine {got!r}   | '
+              f'{lines_of[path][l].strip()[:90]}')
     total = len(asks) - tmpl
     pct = 100.0 * agree / total if total else 100.0
     print(f'{total} uses asked: the engine agrees with the compiler on {agree} ({pct:.1f}%), '
@@ -212,6 +259,6 @@ def main():
         print(f'  {os.path.relpath(path, MAINDIR)}:{line + 1}:{col + 1} {sym.split(".")[0]}: compiler '
               f'{os.path.relpath(want[0], MAINDIR)}:{want[1] + 1}, engine {where}   | {text}')
     subprocess.run(['rm', '-rf', cache])
-    if pct < MIN: sys.exit(1)
+    if pct < MIN or t_pct < MIN_TYPES: sys.exit(1)
 
 main()

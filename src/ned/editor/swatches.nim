@@ -174,12 +174,14 @@ func declShape(s: string): (bool, int, int, int) =
 
 proc typeHintAt(b: Buffer, line, col: int): string =
   ## the type hint (`: int`) drawn at a column of a line, or "" — the compiler's (a saved file's NIF) first
-  if cfgInlayHints and b.lang.mode == lmNim:
-    for (c, t) in nifTypeHints(b, line):
-      if c == col: return t
+  var mine = ""
   if cfgInlayHints and line in b.inlays:
     for (c, lb) in b.inlays[line]:
-      if c == col and lb.strip.startsWith(":"): return lb
+      if c == col and lb.strip.startsWith(":"): mine = lb
+  if cfgInlayHints and b.lang.mode == lmNim:
+    for (c, t) in nifTypeHints(b, line):
+      if c == col and not (mine.len > 0 and nifSameByName(b, mine, t)): return t
+  mine
 
 proc lineDecor(b: Buffer, line: int, toks: seq[TokKind], sw: seq[(int, int, Rgb)]): seq[(int, string)] =
   ## what is drawn between the characters of a line: inlay hints and colour swatches, in column order

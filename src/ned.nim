@@ -77,6 +77,7 @@ include ned/core/types
 include ned/core/state
 include ned/core/utils
 include ned/core/themes
+include ned/core/record
 include ned/core/screen
 include ned/core/termcaps
 include ned/core/keys

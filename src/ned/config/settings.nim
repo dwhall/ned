@@ -564,10 +564,12 @@ proc initSettingDefs() =
        "— the type of a let a macro or a `when compiles` makes, which of several overloads a call picks — is asked " &
        "of the compiler after a pause in the typing: one nimsuggest run for the lines around the screen, which then " &
        "quits. The answers are kept (by the text of each line) for the next time; type hints, hover and Go to " &
-       "definition use them")
+       "definition use them. With Nim 2.4 or newer no nimsuggest is started: the compiler's reading of the text " &
+       "comes with its checks (nim.compilerNif)")
   defS("Nim", "nim.compilerAnswers", %true, "With nim.nimsuggest off: where ned's engine has no answer (a hover, Go to " &
        "definition — names a macro makes, say), ask the compiler once — one nimsuggest run for that question, which " &
-       "then quits. Kept until the file changes")
+       "then quits. Kept until the file changes. With Nim 2.4 or newer no nimsuggest is started: the compiler's " &
+       "reading of the text answers (nim.compilerNif)")
   defS("Nim", "nim.engineChecks", %true, "While you type, ned's own engine checks what it can be sure of, at once " &
        "(before the compiler's check): a field name that is a typo of one the object has, a call with the wrong number " &
        "of arguments, a value neither used nor discarded, a literal of the wrong type, an unused import, code after a " &

@@ -266,6 +266,31 @@ SQL …). It works in a scratch home of its own, but random commands can run tas
 anywhere ned may write: give it a throwaway user (`NED_FUZZ_USER=fuzz`; as root it refuses to start without one).
 Logs go to `/tmp/ned-fuzz-UID-logs`.
 
+**Under AddressSanitizer.** Nim's own checks do not see a `copyMem` past the end, or memory used after it was freed
+behind a cast or across threads; the C compiler's sanitizer does, and stops ned with a report. A build for it (gcc;
+clang needs its `compiler-rt`), then the fuzzer as before:
+
+```sh
+nim c --stackTrace:on --lineTrace:on --checks:on --passC:"-fsanitize=address -fno-omit-frame-pointer" \
+  --passL:"-fsanitize=address" -o:ned_asan src/ned.nim
+ASAN_OPTIONS=detect_leaks=0:handle_segv=0:log_path=/tmp/ned-asan/report NEDBIN=./ned_asan \
+  bash tests/fuzz/batch.sh 240 mixed palette hex vim helix c           # then: ls /tmp/ned-asan/report.*
+```
+
+No leak check (ned leaves without freeing what it holds), and SIGSEGV stays with ned's own crash note.
+[`.github/workflows/weekly.yml`](../../.github/workflows/weekly.yml) runs this every Monday and when asked.
+
+## A problem someone reports
+
+`ned --record FILE` (the session's input, the terminal's answers and size, the text of the files opened —
+[`core/record.nim`](../../src/ned/core/record.nim)) and `ned --replay FILE [FOLDER]` are how a problem seen on a
+phone is seen again here: ask for a recording before guessing from a screenshot. Play it in tmux at any size (ned
+draws at the recording's); delete the recording's last lines to stop before its end, then look around — when it
+ends the keys are yours. It carries the reporter's settings (secrets emptied) and terminal environment (`TERM`,
+`TERMUX_VERSION` …), not the plugins they installed nor their project beyond the files they opened: for an engine
+problem ask for the project too and give it as FOLDER. `ned --safe` rules their settings and plugins in or out. A
+replay limits itself with Landlock (its own folder, no network): what it types runs in ned's terminal too.
+
 ## Performance
 
 | script | what it measures, against what |
@@ -339,6 +364,9 @@ the Coder Nerd Font Mono, at twice the size, framed, in 256 colours. The font is
 | windows | the unit tests of ned's own logic, the three programs built natively, `win_smoke.py` |
 | scoreboard | the engine scoreboard on standard-library modules, Lua and tinyxml2 |
 | fuzz, engine | by hand only (*Run workflow*): fuzzing for a given time; the full comparison with nimsuggest |
+
+[`.github/workflows/weekly.yml`](../../.github/workflows/weekly.yml), every Monday (and by hand): the fuzzer on a
+build with AddressSanitizer — see [The fuzzer](#the-fuzzer).
 
 [`.github/workflows/build.yml`](../../.github/workflows/build.yml) builds ned, nedfmt and nedls for Linux (gcc,
 clang, and the oldest Nim supported), macOS, Linux arm64, Termux and Windows (WSL and native), runs the command-line

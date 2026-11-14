@@ -309,6 +309,7 @@ Every command of the palette (Ctrl+E, or Ctrl+P and `>`), with its key or what i
 | Nim: expand macro/template in a tab |  |
 | Nim: exports nothing uses… |  |
 | Nim: extract selection into a proc |  |
+| Nim: find a routine by its signature… | what it takes and gives: (string, char) -> seq[string] finds split |
 | Nim: flame graph of the profile | the call stacks, as wide as the time they took — tap a box to look inside |
 | Nim: format with ned's built-in formatter (nph style) |  |
 | Nim: format with nimpretty |  |

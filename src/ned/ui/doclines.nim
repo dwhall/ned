@@ -4,7 +4,7 @@ proc lineInlays(b: Buffer, line: int, toks: seq[TokKind]): seq[(int, string)] =
   ## the hints that can be shown on a line: never past its end, never inside a comment or string, and a
   ## type (`: int`) only right after a name, or a call chain's step (`.mapIt(…): seq[int]`) — a hint left over
   ## from older text is not drawn. A saved Nim file's lets and vars get the type the compiler gave them, when its NIF
-  ## says (nimnif.nim), in place of the engine's
+  ## says (nimnif.nim), in place of the engine's — which stays when it is that type by its name (nifSameByName)
   if line >= b.lines.len: return
   let fromNif = if b.lang.mode == lmNim: nifTypeHints(b, line) else: @[]
   if line notin b.inlays and fromNif.len == 0: return
@@ -17,7 +17,9 @@ proc lineInlays(b: Buffer, line: int, toks: seq[TokKind]): seq[(int, string)] =
       continue
     var nl = label
     for (c, t) in fromNif:
-      if c == col and label.strip.startsWith(":"): nl = (if label.startsWith(" "): " " else: "") & t
+      # (the compiler's type — unless the engine's is that type by its name: `Stream`, not `ref StreamObj`)
+      if c == col and label.strip.startsWith(":") and not nifSameByName(b, label, t):
+        nl = (if label.startsWith(" "): " " else: "") & t
     result.add (col, nl)
   for (c, t) in fromNif:
     var have = false

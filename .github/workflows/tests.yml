@@ -8,7 +8,8 @@
 #   ui    — the whole editor driven through tmux, its screen read back (tests/ui), in four parts side by side,
 #           with the tools the tests use installed (language servers, clangd, gdb, shells, an SSH server)
 #   scoreboard — the engines against nimsuggest and clangd on fixed files, each score against its minimum
-#   grader — Go to definition on ned's own source against Nim 2.4's own reading of it (nifgrade.py), at least 99%
+#   grader — Go to definition and the types of lets and vars on ned's own source against Nim 2.4's own reading
+#           of it (nifgrade.py): at least 99% and 98%
 #   soak  — ten minutes of editing ned's own source: ned and its engine worker may not grow, nor make an error
 # Started by hand (Actions › tests › Run workflow) it can also fuzz ned and compare its Nim engine with nimsuggest.
 name: tests
@@ -263,8 +264,9 @@ jobs:
           exit $code
 
   grader:
-    # ned's Go to definition graded by the compiler: Nim 2.4's `nim nif` resolves every name of ned's own source, and
-    # the engine must agree on at least 99% of the uses of each part (tests/engine/nifgrade.py; it says which differ)
+    # ned's engine graded by the compiler: Nim 2.4's `nim nif` resolves every name of ned's own source and types
+    # every let and var, and the engine must agree on at least 99% of the uses of each part and 98% of the types
+    # (tests/engine/nifgrade.py; it says which differ)
     name: Go to definition against the compiler
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -279,7 +281,7 @@ jobs:
       - name: The grades
         run: |
           for m in src/nedfmt.nim src/ned/nim/index.nim src/nedls.nim; do
-            python3 tests/engine/nifgrade.py $m --driver ./ned-engine --min 99 --show 10 | tee -a "$GITHUB_STEP_SUMMARY" || exit 1
+            python3 tests/engine/nifgrade.py $m --driver ./ned-engine --min 99 --min-types 98 --show 10 | tee -a "$GITHUB_STEP_SUMMARY" || exit 1
           done
 
   soak:

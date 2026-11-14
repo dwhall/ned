@@ -9,10 +9,11 @@ var
   caOrder: seq[string]                        # (the oldest answers go first: at most 200 kept)
 
 proc compilerAnswerUsable(b: Buffer): bool =
-  ## may the compiler be asked once about this buffer (the engine had no answer, nimsuggest is not running)?
+  ## may the compiler be asked once about this buffer (the engine had no answer, nimsuggest is not running)? Not
+  ## with Nim 2.4 or newer: its reading of the text (NIF) answers, and no nimsuggest is started
   cfgCompilerAnswers and b.lang != nil and b.lang.mode == lmNim and b.path.len > 0 and b.path.endsWith(".nim") and
     not b.largeOn and b.lines.len < 60000 and not cfgNimSuggest and not nimUsesLsp() and cfgNimIde != "off" and
-    haveExe("nimsuggest") and codeTrusted(parentDir(b.path))
+    not nim2NifOn() and haveExe("nimsuggest") and codeTrusted(parentDir(b.path))
 
 proc compilerAnswerNim3(b: Buffer, p: Pos): bool =
   ## Nim 3: nimony's --def where the engine has none (nimony has no hover); shown as nimsuggest's answer would be

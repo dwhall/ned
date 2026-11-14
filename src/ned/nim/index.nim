@@ -28,6 +28,7 @@ include index/hover
 include index/expand
 include index/typos
 include index/reshape
+include index/signature
 when defined(nedMemProbe): include index/memprobe_gen   # (tests/memory/memprobe.py: how big each table is)
 
 proc nxShed*(keep: string) =

@@ -24,7 +24,7 @@ Made by **Sultan Al Isaiee** ([@foxoman](https://github.com/foxoman)) — [www.f
 
 ## Contents
 
-- [What's new in 6.49](#whats-new-in-649) · [6.48](CHANGELOG.md#whats-new-in-648) · [6.47.1](CHANGELOG.md#whats-new-in-6471) · [6.47](CHANGELOG.md#whats-new-in-647) · [6.46](CHANGELOG.md#whats-new-in-646) · [6.45](CHANGELOG.md#whats-new-in-645) · [6.44](CHANGELOG.md#whats-new-in-644) · [6.43.1](CHANGELOG.md#whats-new-in-6431) · [6.43](CHANGELOG.md#whats-new-in-643) · [6.42.1](CHANGELOG.md#whats-new-in-6421) · [6.42](CHANGELOG.md#whats-new-in-642) · [6.41.1](CHANGELOG.md#whats-new-in-6411) · [6.41](CHANGELOG.md#whats-new-in-641) · [6.40](CHANGELOG.md#whats-new-in-640) · [6.39](CHANGELOG.md#whats-new-in-639) · [6.38](CHANGELOG.md#whats-new-in-638) · [6.37](CHANGELOG.md#whats-new-in-637) · [6.36](CHANGELOG.md#whats-new-in-636) · [6.35](CHANGELOG.md#whats-new-in-635) · [6.34](CHANGELOG.md#whats-new-in-634) · [6.33](CHANGELOG.md#whats-new-in-633) · [6.32](CHANGELOG.md#whats-new-in-632) · [older releases](CHANGELOG.md)
+- [What's new in 6.50](#whats-new-in-650) · [6.49](CHANGELOG.md#whats-new-in-649) · [6.48](CHANGELOG.md#whats-new-in-648) · [6.47.1](CHANGELOG.md#whats-new-in-6471) · [6.47](CHANGELOG.md#whats-new-in-647) · [6.46](CHANGELOG.md#whats-new-in-646) · [6.45](CHANGELOG.md#whats-new-in-645) · [6.44](CHANGELOG.md#whats-new-in-644) · [6.43.1](CHANGELOG.md#whats-new-in-6431) · [6.43](CHANGELOG.md#whats-new-in-643) · [6.42.1](CHANGELOG.md#whats-new-in-6421) · [6.42](CHANGELOG.md#whats-new-in-642) · [6.41.1](CHANGELOG.md#whats-new-in-6411) · [6.41](CHANGELOG.md#whats-new-in-641) · [6.40](CHANGELOG.md#whats-new-in-640) · [6.39](CHANGELOG.md#whats-new-in-639) · [6.38](CHANGELOG.md#whats-new-in-638) · [6.37](CHANGELOG.md#whats-new-in-637) · [6.36](CHANGELOG.md#whats-new-in-636) · [6.35](CHANGELOG.md#whats-new-in-635) · [6.34](CHANGELOG.md#whats-new-in-634) · [6.33](CHANGELOG.md#whats-new-in-633) · [6.32](CHANGELOG.md#whats-new-in-632) · [older releases](CHANGELOG.md)
 - [Features](#features)
 - [Installing](#installing)
 - [First steps](#first-steps)
@@ -33,27 +33,39 @@ Made by **Sultan Al Isaiee** ([@foxoman](https://github.com/foxoman)) — [www.f
 
 ---
 
-## What's new in 6.49
+## What's new in 6.50
 
-**Long routines no longer slow the checks down.** After a pause in typing, the engine's checks ask each line of a
-routine for its local variables, and each time ned read the routine again from its first line. In a routine of
-1,600 lines (the Nim compiler's `vm.nim` has one) that came to most of a second every time you stopped typing, and
-more on a phone. Each routine is now read once for all its lines, for the checks and for the type hints: `vm.nim`'s
-checks take an eighth of the time they did, and find the same problems.
+**A problem, recorded and played back.** `ned --record bug.rec FILE` records a session — every key and mouse
+event, what the terminal answers, its size, and the text of the files you open — and `ned --replay bug.rec` plays
+it back on another machine, key by key, with the same pauses, at the same size and with the same settings. A
+problem seen on a phone can be seen again where it gets fixed, with no screenshot to guess from. The recording is a
+text file that holds everything you typed, so read it before you send it; your settings go in without their API keys
+and tokens. A replay runs in a folder of its own, and on Linux is kept inside it with no network, because it types
+again what was typed, in ned's terminal too ([Troubleshooting](docs/guide/troubleshooting.md)).
 
-**A file written twice in a second is read again.** ned told that a file on disk had changed by its modification
-time, to the second, and its size. Written again in the same second at the same size (an agent's or a tool's quick
-second edit that swaps two letters), the file kept the text ned had read first: the errors as you type and
-completion went on with it. The time is now taken to the nanosecond.
+**Safe mode.** `ned --safe` starts with ned's default settings, no plugins and nothing kept from before, and leaves
+your own settings and state as they are: the quick way to tell whether a problem is ned's, a setting's or a
+plugin's.
 
-**Ctrl+Space no longer waits for the disk.** With the completion list open, Ctrl+Space shows or hides the
-documentation beside it, and ned wrote that choice into your settings there and then, waiting until the disk had it:
-on a busy machine that held the key up for as much as a tenth of a second. It is written a second after you stop
-typing now, or when ned quits.
+**No nimsuggest with Nim 2.4.** For what its own engine cannot work out — the type of a `let` a macro makes, which
+overload a call picks — ned started nimsuggest for a moment: after a pause in your typing, and on a hover with no
+answer. Each run read the whole project into memory again, hundreds of megabytes, and on a phone that could close
+Termux. With Nim 2.4 or newer the compiler's own reading of the text comes with its checks, and ned takes these
+answers from it: nimsuggest is not started unless you turn it on (`nim.nimsuggest`). The hover of a name a macro
+makes shows the routine as the compiler declares it. With an older Nim nothing changes
+([Nim IDE](docs/guide/nim.md)).
 
-**fish in the built-in terminal.** fish asks the terminal for its keyboard mode after every prompt (`ESC[=5u`), and
-ned took that for "put the cursor back where it was saved", so the cursor jumped. ned now leaves it alone, as it
-already did for `ESC[s`. Thanks to zivoslav ([#9](https://github.com/foxoman/ned/pull/9)).
+**Find a routine by its signature.** *Nim: find a routine by its signature…* is for when you know the types in your
+hands and the type you want, but not the name: `(string, char) -> seq[string]` finds `split`, `-> JsonNode`
+everything that gives one. The types go in any order, a `seq` fits an `openArray`, a generic's `T` fits anything;
+what the file can call comes first, then routines of modules it does not import yet.
+
+**Types, closer to the compiler's.** Three places where what ned showed was not what the compiler has:
+- after a save, a `let` of a `ref object` type showed `: ref Node:ObjectType`, the compiler's inner name: it shows
+  `: Node`; and `: Stream` stays `Stream`, not `ref StreamObj`;
+- a long array or table constant (over 200 characters) had the wrong type — `array[2, int]` for 81 numbers, none
+  for a table: the length and the type are right, and its hover says how many items it leaves out;
+- completion after a string literal offers `fmt` and the other routines that take a `static string`.
 
 ## Features
 
@@ -126,7 +138,8 @@ debugging in the terminal (logpoints, stops when a value changes), a profiler th
 share of the time beside it (and a flame graph), memory checks (AddressSanitizer, UBSan, valgrind), tests
 written from running a proc, quick fixes from the compiler's messages, AI fixes checked by `nim check`, REPL (Shift+Enter sends code to inim), docs lookup, run configurations, what a
 proc can raise, benchmarks, nimble releases and newer dependency versions, testament, runnableExamples with a ▶,
-type mismatches explained argument by argument. **Nim 3 (Nimony)**: a project built with nimony gets names matched as
+type mismatches explained argument by argument, a routine found by its signature (`(string, char) -> seq[string]`
+finds `split`). **Nim 3 (Nimony)**: a project built with nimony gets names matched as
 written, Nimony's own library, errors from `nimony check` and its `--def`/`--usages`, Nim 3's pragmas; Nim 2 files
 show what porting them needs, fixed one by one, all at once, or by the assistant checked with nimony. → [Nim IDE](docs/guide/nim.md) · [Formatting](docs/guide/formatting.md) · [Compiler Explorer](docs/guide/compiler-explorer.md)
 
@@ -151,6 +164,11 @@ is marked — Ctrl+↑/↓ go through them, failed ones show red, a command's ou
 **Remote control** — scripts reach the running ned: `ned --remote FILE:LINE`, `--remote-command`,
 `--remote-message`, `--remote-problems` (a build's output → Problems), `--remote-get`, `--remote-list`;
 `ned --wait` as `GIT_EDITOR`. → [The terminal and remote work](docs/guide/terminal.md)
+
+**When something goes wrong** — `ned --check` says what ned found on the machine; `ned --safe` starts with default
+settings and no plugins; `ned --record FILE` records a session — keys, the terminal's answers, the files opened —
+and `ned --replay FILE` plays it back elsewhere as it happened; unsaved edits are kept through a crash or a closed
+terminal. → [Troubleshooting](docs/guide/troubleshooting.md)
 
 **The terminal it runs in, asked** — the kitty keyboard protocol (Ctrl+Shift+letters, Ctrl+I apart from Tab),
 24-bit colour, curly underlines in the problem's colour, emoji sequences as one character (mode 2027), light and
@@ -212,7 +230,7 @@ ned
 ```
 
 or, from the project folder: `nimble termux` (ned, with `nedfmt` and `nedls` beside it) — or a ready-made package,
-`pkg install ./ned_6.49.0_aarch64.deb` (ned, nedls, nedfmt; the example plugins in `$PREFIX/share/ned/plugins`):
+`pkg install ./ned_6.50.0_aarch64.deb` (ned, nedls, nedfmt; the example plugins in `$PREFIX/share/ned/plugins`):
 `nimble termuxdeb` makes it on a Linux machine (with zig).
 
 The Nim IDE features need nothing more: the engine is built in, and `nim check` does the rest.

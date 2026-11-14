@@ -71,6 +71,7 @@ python3 tests/ui/run.py ./ned [t_name …]              # the editor through tmu
 python3 .github/ci/pty_smoke.py ./ned && python3 .github/ci/bench.py ./ned && python3 tests/perf/rounds.py ./ned
 python .github/ci/win_smoke.py ned.exe nedls.exe nedfmt.exe   # on Windows (pip install pywinpty)
 NEDBIN=./ned_debug bash tests/fuzz/batch.sh 120 mixed palette hex   # random input; no crash, no internal error
+ned --replay bug.rec [FOLDER]                        # a session someone recorded (ned --record), played back
 nim c -d:release --checks:on -r tests/fuzz/parsers.nim 20     # every reader and formatter fed broken text: no crash
 python3 tests/docs/apiref.py --check && python3 tests/docs/links.py && python3 tests/docs/names.py  # the docs
 python3 tests/docs/comments.py                       # every file and routine says what it is
@@ -79,12 +80,17 @@ python3 tests/docs/wiring.py ./ned                   # every menu item's command
 python3 tests/memory/bufids.py                       # every table kept per open file is let go when its tab closes
 python3 tests/memory/memprobe.py OUT                 # a ned that logs each table's size: soak.py OUT --mem-log M, --diff M
 python3 tests/engine/scoreboard.py --engine E --nedls ./nedls --cdriver C --c-files … --cpp-files …  # minimum scores
-python3 tests/engine/nifgrade.py MAIN.nim --nim NIM24 --driver E   # Go to definition against Nim 2.4's own NIF
+python3 tests/engine/nifgrade.py MAIN.nim --nim NIM24 --driver E   # definitions and types against Nim 2.4's own NIF
 NED_SHOT_FONT=FONT.ttf python3 tests/shots/scenes.py [NAME …]  # the docs' screenshots taken again (render.py: redrawn)
 ```
 
 A UI test that fails only on GitHub: run it with the runner's tools (Nim 2.4 on PATH, the language servers in
 `NED_TEST_PATH`, `GITHUB_ACTIONS=true`, `NED_UI_FULL=1`) — see [What the machine has](docs/dev/pitfalls.md#what-the-machine-has).
+
+A problem someone reports from their machine: ask for a recording (`ned --record bug.rec FILE`, and whether
+`ned --safe` shows it too) and play it back here with `ned --replay bug.rec` before guessing from a screenshot —
+[A problem someone reports](docs/dev/testing.md#a-problem-someone-reports). Memory errors: the fuzzer on a build
+with AddressSanitizer ([The fuzzer](docs/dev/testing.md#the-fuzzer); GitHub runs it every Monday).
 
 A change to a setting or a command: `ned --doc-settings > docs/reference/settings.md` and `ned --doc-commands >
 docs/reference/commands.md` (with an empty `XDG_CONFIG_HOME`, so no one's settings get in); to the plugin API:

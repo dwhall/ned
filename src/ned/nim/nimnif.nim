@@ -366,6 +366,29 @@ proc nifTypeHints(b: Buffer, line: int): seq[(int, string)] =
         i = j
       else: inc i
 
+var nifNameMemo: Table[string, bool]        # (a file, the engine's type, the compiler's) → the same type by its name
+
+proc nifSameByName(b: Buffer, engine, nif: string): bool =
+  ## whether the type the engine shows after a let (`: Stream`) is the one the compiler's NIF has (`: ref StreamObj`)
+  ## by the name it was declared with — `Stream* = ref StreamObj`. The NIF writes what a type is; its name reads
+  ## better, so the hint keeps it
+  let e = engine.strip(chars = {':', ' '})
+  let n = nif.strip(chars = {':', ' '})
+  if e.len == 0 or not (n.startsWith("ref ") or n.startsWith("ptr ")) or not e.allCharsInSet(IdentChars): return false
+  let key = b.path & "\0" & e & "\0" & n
+  if key notin nifNameMemo:
+    var same = false
+    try:
+      let f = nxFileFor(b)
+      if f != nil:
+        for r in nxTypeSyms(nxScope(f), e):
+          same = r.sym.typ.strip == n
+          break
+    except CatchableError: discard
+    if nifNameMemo.len > 2000: nifNameMemo.clear()
+    nifNameMemo[key] = same
+  nifNameMemo[key]
+
 proc nifHasHints(b: Buffer, line: int): bool =
   ## whether the compiler's NIF has a type for a let or var of this line (it is drawn even without the engine's hints)
   let fx = nifFactsFor(b)
@@ -469,6 +492,47 @@ proc nimNifDefinition(b: Buffer, p: Pos): bool =
   let nb = if target[0] == b.path: b else: openFile(target[0])
   if nb != nil: nb.centerOn(nb.clampPos(Pos(line: target[1], col: target[2])))
   true
+
+proc nifKids(ns: seq[NifNode], p: int, most = 12): seq[int] =
+  ## the nodes directly inside node p (the first `most`)
+  for j in p + 1 ..< ns.len:
+    if ns[j].depth <= ns[p].depth: break
+    if ns[j].parent == p:
+      result.add j
+      if result.len >= most: break
+
+proc nifRoutineText(nif, sym: string): string =
+  ## a routine as Nim 2.4's NIF declares it, written as Nim — `proc getFoo(a: int, s: seq[string]): string` — "" when
+  ## the NIF has no routine of that symbol
+  var ns: seq[NifNode]
+  try:
+    if getFileSize(nif) > NifReadMax: return ""
+    ns = nifParse(readFile(nif).splitLines, before = true)
+  except CatchableError: return ""
+  for i, n in ns:
+    if not n.isDef or n.atom != sym or n.parent < 0: continue
+    let d = n.parent
+    if ns[d].tag notin ["proc", "func", "iterator", "converter", "method", "template", "macro"]: return ""
+    let kids = nifKids(ns, d)                    # (name, exported, pattern, generics, params, the result's type …)
+    if kids.len < 6 or kids[0] != i: return ""
+    var ps: seq[string]
+    for pi in nifKids(ns, kids[4], 40):
+      let pk = nifKids(ns, pi)
+      if ns[pi].tag != "param" or pk.len < 4: continue
+      let t = nifTypeText(ns, pk[3], false)
+      ps.add nifSymName(ns[pk[0]].atom).split('`')[0] & (if t.len > 0: ": " & t else: "")
+    let ret = nifTypeText(ns, kids[5], false)
+    return ns[d].tag & " " & nifSymName(sym) & "(" & ps.join(", ") & ")" & (if ret.len > 0: ": " & ret else: "")
+
+proc nimNifHover(b: Buffer, p: Pos): string =
+  ## the hover of a name the engine has none for — a routine a macro or a template made, which has no line of its
+  ## own — by the compiler's reading of the file: the routine as its NIF declares it (Nim 2.4)
+  let fx = nifFactsFor(b)
+  let sym = nifSymAt(b, fx, p)
+  if sym.len == 0 or not fx.nif.endsWith(".nim2.nif"): return ""
+  let nif = if sym in fx.defs: fx.nif else: nifForeignNif(fx.nif, nifModuleOf(sym), true)
+  let t = if nif.len > 0: nifRoutineText(nif, sym) else: ""
+  if t.len > 0: "```nim\n" & t & "\n```\nas the compiler reads it" else: ""
 
 proc nimNifReferences(b: Buffer, p: Pos, hits: var seq[(string, int, int)]): bool =
   ## Find references by the compiler's reading (Nim 2.4's NIF): every place of the project's files that names the

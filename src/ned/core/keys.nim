@@ -10,18 +10,36 @@ proc readInput(): bool =
   ## or a real read error marks the terminal as gone (ttyGone)
   let start = inBuf.len            # (what was pending before this read: an Escape there came on its own)
   var tmp: array[8192, char]
+  let playing = repOn
   while true:
     let n = posix.read(0.cint, addr tmp[0], tmp.len)
     if n == 0 or (n < 0 and errno notin [EAGAIN, EWOULDBLOCK, EINTR]):
-      ttyGone = true
+      # (a replay reads when the recording's next key is due, the terminal silent: nothing there is not its end —
+      # the main loop's poll still sees a terminal that went away)
+      if not playing: ttyGone = true
       break
     if n <= 0: break
+    if playing:
+      # (ned --replay: what this terminal sends is not the session's — but Ctrl+Q or Ctrl+C ends the replay, as the
+      # byte or as the kitty keyboard protocol writes them)
+      var sent = newString(n)
+      copyMem(addr sent[0], addr tmp[0], n)
+      if '\x11' in sent or '\x03' in sent or "\e[113;5u" in sent or "\e[99;5u" in sent: quitting = true
+      if n < tmp.len: break
+      continue
     result = true
     if inBuf.len == start: inFresh = start
     let old = inBuf.len
     inBuf.setLen(old + n)
     copyMem(addr inBuf[old], addr tmp[0], n)
     if n < tmp.len: break
+  if playing:
+    var bytes: string
+    if repNext(bytes):                 # (what the terminal sent then, when its time has come)
+      result = true
+      inFresh = start
+      inBuf.add bytes
+  elif result: recInput(inBuf[start .. ^1])        # (ned --record)
 
 proc modsFromParam(p: int): set[Mod] =
   ## the modifiers of a terminal's modifier number (one more than a sum of 1 for Shift, 2 for Alt, 4 for Ctrl); none for

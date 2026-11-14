@@ -279,6 +279,7 @@ proc loadFile(b: Buffer, path: string): bool =
   ## the undo history from last time are set.
   b.path = absolutePath(path).normalizedPath
   if fileExists(b.path):
+    recFileRead(b.path)                # (ned --record: its text as it is now)
     var content: string
     var streamed = false
     var viewed = false

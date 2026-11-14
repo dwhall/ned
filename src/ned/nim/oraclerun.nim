@@ -3,10 +3,12 @@
 var orNotAsked: HashSet[string]          # (calls the engine decides itself, by their line's text: not looked at again)
 
 proc orUsable(b: Buffer): bool =
-  ## may the compiler be asked about this buffer in the background?
+  ## may the compiler be asked about this buffer in the background (a nimsuggest run)? Not with Nim 2.4 or newer:
+  ## the compiler's reading of the text comes with its checks as you type and on save (NIF, nimnif.nim), and no
+  ## nimsuggest is started — its run took the whole project's memory again each time
   cfgOracle and b.lang != nil and b.lang.mode == lmNim and b.path.len > 0 and b.path.endsWith(".nim") and
     not b.largeOn and b.lines.len < 20000 and not cfgNimSuggest and not nimUsesLsp() and cfgNimIde != "off" and
-    not nim3On() and haveExe("nimsuggest") and codeTrusted(parentDir(b.path))
+    not nim3On() and not nim2NifOn() and haveExe("nimsuggest") and codeTrusted(parentDir(b.path))
 
 proc orQuestions(b: Buffer, f: NxFile): seq[(int, int)] =
   ## what to ask about the lines around the screen: the lets and vars written without a type that have no type

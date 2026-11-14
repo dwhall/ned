@@ -24,7 +24,7 @@ found and how to install the rest. See [Installing](../README.md#installing).
 **How do I install it on Termux?** Build it on the device: `curl -fsSL
 https://raw.githubusercontent.com/foxoman/ned/main/install.sh | sh` does it with nimble, or by hand `pkg install nim
 git`, then `nim c -d:release --opt:speed -d:strip -o:$PREFIX/bin/ned src/ned.nim` (or `nimble termux` in the project
-folder). A ready-made package, if you have one — `pkg install ./ned_6.49.0_aarch64.deb` — brings ned, nedls and
+folder). A ready-made package, if you have one — `pkg install ./ned_6.50.0_aarch64.deb` — brings ned, nedls and
 nedfmt, and the example plugins in `$PREFIX/share/ned/plugins`.
 
 **And on Linux, macOS, Windows?** Linux and macOS build from the source with one `nim c` (or `nimble install`).
@@ -200,5 +200,7 @@ folder of one you installed (it asks first); one of ned's own goes back to AVAIL
 ## Reporting a problem
 
 *Help › Copy info for bug report* copies what a report needs (versions, the terminal, the tools found). Internal
-errors are written to `~/.local/state/ned/errors.log` — please attach it. [CONTRIBUTING.md](../CONTRIBUTING.md)
+errors are written to `~/.local/state/ned/errors.log` — please attach it. `ned --safe` tells whether it is your
+settings or a plugin, and `ned --record bug.rec FILE` records the session so it can be played back as it happened
+([Troubleshooting](guide/troubleshooting.md)). [CONTRIBUTING.md](../CONTRIBUTING.md)
 explains how ned is built and tested; security problems go privately, as [SECURITY.md](../SECURITY.md) says.

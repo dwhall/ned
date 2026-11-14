@@ -22,13 +22,13 @@ func nxStripValMods*(t: string): string =
       changed = true
 
 func nxStripMods*(t: string): string =
-  ## "var seq[int]" → "seq[int]", "sink Foo" → "Foo", "ref Foo" → "Foo", "static[int]" → "int", (Nim 3)
-  ## "nil ref Foo" → "Foo"
+  ## "var seq[int]" → "seq[int]", "sink Foo" → "Foo", "ref Foo" → "Foo", "static[int]" and "static int" → "int",
+  ## (Nim 3) "nil ref Foo" → "Foo"
   result = t.strip
   var changed = result.len > 0 and result[0] in {'v', 's', 'l', 'r', 'p', 'o', 'n'}   # (most types: nothing to strip)
   while changed:
     changed = false
-    for m in ["var ", "sink ", "lent ", "lent2 ", "ref ", "ptr ", "out ", "owned ", "nil "]:
+    for m in ["var ", "sink ", "lent ", "lent2 ", "ref ", "ptr ", "out ", "owned ", "nil ", "static "]:
       if result.startsWith(m):
         result = result[m.len .. ^1].strip
         changed = true
@@ -1745,7 +1745,7 @@ proc nxTypeOfExpr*(f: NxFile, sc: NxScope, locals: seq[NxSym], e: string, line, 
       let items = nxSplitTop(s[1 ..< ce], {','})
       var n = 0
       for it in items:
-        if it.strip.len > 0: inc n
+        if it.strip.len > 0: n += nxItemsLeftOut(it)     # (a long literal kept short: `… 53 more`)
       let et = nxTypeOfExpr(f, sc, locals, items[0], line, depth + 1).typ
       return NxVal(typ: (if et.len > 0: "array[" & $n & ", " & et & "]" else: ""))
   if s[0] == '{':
@@ -1757,7 +1757,7 @@ proc nxTypeOfExpr*(f: NxFile, sc: NxScope, locals: seq[NxSym], e: string, line, 
         # {"a": 1, "b": 2}: an array of (key, value) pairs, as toTable takes it
         var n = 0
         for it in nxSplitTop(s[1 ..< ce], {','}):
-          if it.strip.len > 0: inc n
+          if it.strip.len > 0: n += nxItemsLeftOut(it)
         let kt = nxTypeOfExpr(f, sc, locals, first[0 ..< kc], line, depth + 1).typ
         let vt = nxTypeOfExpr(f, sc, locals, first[kc + 1 .. ^1], line, depth + 1).typ
         return NxVal(typ: (if kt.len > 0 and vt.len > 0: "array[" & $n & ", (" & kt & ", " & vt & ")]" else: "array"))

@@ -124,6 +124,7 @@ proc lspDidSave(b: Buffer)
 proc lspDidClose(b: Buffer)
 proc openPicker(kind: PickKind, title: string, items: seq[PickItem])
 proc openPrompt(kind: PromptKind, label: string, initial = "")
+proc askText(label, initial: string, cb: proc(t: string))               # ui/themefiles.nim
 proc askConfirm(message: string, action: proc(c: char) {.closure.})
 proc closeComp()
 proc showReferences(title: string, hits: seq[(string, int, int)])
@@ -281,7 +282,9 @@ proc applyNifColors(b: Buffer, s: string, toks: var seq[TokKind], line: int)
 proc nim2NifOn(): bool                                            # nim/nimnif.nim
 proc nim2NifCheckCmd(flags, main: string): string
 proc nimNifDefinition(b: Buffer, p: Pos): bool
+proc nimNifHover(b: Buffer, p: Pos): string
 proc nifTypeHints(b: Buffer, line: int): seq[(int, string)]
+proc nifSameByName(b: Buffer, engine, nif: string): bool
 proc nifHasHints(b: Buffer, line: int): bool
 proc nifForget()
 proc nifChecked()

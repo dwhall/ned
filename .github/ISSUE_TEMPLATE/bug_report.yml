@@ -40,6 +40,11 @@ body:
       description: If ned showed "Internal error", paste ~/.local/state/ned/errors.log (or the part about this).
       render: text
   - type: textarea
+    id: recording
+    attributes:
+      label: A recording (optional)
+      description: "`ned --record bug.rec FILE`, do what goes wrong, quit, and attach bug.rec — `ned --replay` shows it as it happened. It holds every key you typed and the text of the files you opened (a text file: read it first). Does it also happen with `ned --safe`?"
+  - type: textarea
     id: file
     attributes:
       label: A file that shows it (optional)

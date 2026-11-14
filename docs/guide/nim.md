@@ -68,9 +68,15 @@ default). Some things the engine cannot work out by reading the code:
 - a generic the engine does not follow;
 - which of several overloads a call picks.
 
-For these, ned asks the compiler. After a pause in your typing, one nimsuggest run takes all the questions for the
-lines around the screen, answers them and quits; no server is kept running. The unsaved text goes to it as a
-private copy.
+For these, ned asks the compiler. With Nim 2.4 or newer its answer is already there: the check that runs as you
+type and on save is `nim nif`, which writes the compiler's own reading of the text — every name resolved, every
+`let` and `var` with its type (`nim.compilerNif`) — and the hints, hover and Go to definition read it. No
+nimsuggest is started, so its memory (the whole project again, each run) is not taken: on a phone that is the
+difference between a check and Termux being closed. While the text does not compile, the lines you have not
+changed keep the answers of the last check that did.
+
+With an older Nim, after a pause in your typing, one nimsuggest run takes all the questions for the lines around
+the screen, answers them and quits; no server is kept running. The unsaved text goes to it as a private copy.
 
 The answers are kept on disk (`~/.cache/ned/oracle`), by the text of each line and by what the file and the
 project's modules it imports declare. A line you have not changed keeps its answer when you edit inside other
@@ -272,7 +278,9 @@ oldest go and are worked out again when asked. The files a module includes share
 scope holds only its own names, then the module's, kept once for all of them.
 
 **The compiler's answer, once** (`nim.compilerAnswers`, on by default). With nimsuggest off (the default), a
-hover or *Go to definition* the engine has no answer for — a name a macro makes, say — asks the compiler once: one
+hover or *Go to definition* the engine has no answer for — a name a macro makes, say — is answered by the
+compiler: with Nim 2.4 or newer from its reading of the text (the hover shows a routine a macro made as the
+compiler declares it; Go to definition goes where the compiler says), with an older Nim by asking it once — one
 nimsuggest run for that question, which then quits, so its memory goes with it. The answer is kept until the file
 changes; your unsaved text goes to it as a private copy, deleted after.
 
@@ -308,7 +316,17 @@ call itself changes. Alt+M on the call again — or a tap on the heading — hid
 expansion* hides them all. *Nim: expand macro/template in a tab* opens the expansion in a tab of its own instead
 (*expand macro one level* too, when nimsuggest is on). Hover on a template call shows the expansion as well.
 
-**ned's engine and nimsuggest.** Since 5.28 nimsuggest is off by default; this is what each gives:
+**Find a routine by its signature.** *Nim: find a routine by its signature…* asks what it takes and gives and
+lists the routines that fit, the closest first: `(string, char) -> seq[string]` finds `split`, `-> JsonNode`
+everything that gives a `JsonNode`, `(seq[int], int) -> bool` what tells whether a number is in a list. Write
+the types as in a proc's header, in any order; the brackets may be left out, and `(s: string): int` works too. A
+type fits a parameter exactly, as a related type (a `seq` for an `openArray`, a subtype) or as a generic's `T`;
+a routine may want up to two more parameters than you gave. The routines this file can call come first among
+those that fit as well, then those of modules ned has read that the file does not import (*not imported here*
+beside them). Enter goes to the declaration.
+
+**ned's engine and nimsuggest.** Since 5.28 nimsuggest is off by default, and since 6.50, with Nim 2.4 or newer,
+ned never starts it unless you turn it on; this is what each gives:
 
 | | ned's engine (the default) | nimsuggest |
 |---|---|---|
@@ -447,16 +465,20 @@ made of each module, kept in ned's folder (`~/.cache/ned/nif`, never in the proj
 - **colours** by what each name is in the compiler's reading — a routine, a type, a field, a constant, a global, a
   parameter — names a macro or a template made among them;
 - **the types after its lets and vars** as the compiler gave them (`: Table[string, int]`), where the engine has
-  none or another;
+  none or another — by the name a type was declared with: `: Node` for `Node = ref object`, and `: Stream`, the
+  engine's, stays where the compiler writes what it is (`ref StreamObj`);
 - **Go to definition** of the declaration the compiler chose: of `show(2.5)`, the `show` that takes a float;
 - **Find references** (Alt+Q) of that declaration and no other — not every routine named `show` — across the
   project's files, when the compiler has read each of them as it is saved and none has unsaved changes (the list
   says *(compiler)*; otherwise the engine answers as before);
-- **hover** with the type the compiler gave a let or var (*the compiler's type: `Table[string, seq[int]]`*);
+- **hover** with the type the compiler gave a let or var (*the compiler's type: `Table[string, seq[int]]`*), and,
+  for a routine a macro or a template made, where the engine has no hover, the routine as the compiler declares
+  it (`proc getFoo(): string`);
 - **what a macro call made** (Alt+M on a call at the top of the file) at once, written from the compiler's reading,
   without running the compiler again — for a form it cannot write, the compiler is asked as before;
-- no nimsuggest run in the background for the types the engine cannot work out (`nim.compilerOracle`): the
-  compiler's reading has them — one process less on a phone.
+- no nimsuggest run for what the engine cannot work out — in the background (`nim.compilerOracle`) or for a hover
+  or Go to definition with no answer (`nim.compilerAnswers`): the compiler's reading has it. ned starts nimsuggest
+  only when you turn it on (`nim.nimsuggest`) — hundreds of megabytes less on a phone.
 
 While you type, the check after a pause reads the unsaved text the same way, and its colours, types, hover and Go
 to definition hold for the lines as they were then — a line you typed in above moves them along with it; a line

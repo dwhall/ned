@@ -38,6 +38,31 @@ proc cmdUnusedExports() =
     return
   openActions("Exported, used nowhere in the project (" & $items.len & ")" & (if cut: " — stopped after 20 s" else: ""), items)
 
+proc cmdFindBySignature() =
+  ## Nim: find a routine by its signature… — asks what it takes and gives (`(string, char) -> seq[string]`) and lists
+  ## the routines that fit, the closest first: those this file can call, then those of modules ned has read that it
+  ## does not import (said beside them). Enter goes to the declaration
+  let b = buf()
+  if b.lang == nil or b.lang.mode != lmNim or not nimEngineOn(b):
+    info("Find by signature: in a Nim file, with ned's Nim engine on")
+    return
+  askText("What it takes and gives — (string, char) -> seq[string]:", "", proc(q: string) =
+    var found: seq[(NxRef, int, bool)]
+    try:
+      let f = nxFileFor(b)
+      found = nxBySignature(f, nxScope(f), q)
+    except CatchableError, Defect: discard
+    if found.len == 0:
+      info("No routine fits " & q.strip & " — write the types as in a proc: (seq[int], int) -> bool, or -> JsonNode")
+      return
+    var items: seq[(string, string, Action)]
+    for (r, _, here) in found:
+      let p = r.file.path
+      items.add act(r.sym.name & nxShortDetail(r.sym),
+                    (if rootDir.len > 0 and p.startsWith(rootDir & "/"): relPath(p) else: extractFilename(p)) & ":" &
+                    $(r.sym.line + 1) & (if here: "" else: "  not imported here"), gotoAct(p, r.sym.line, r.sym.col))
+    openActions("Routines that fit " & q.strip & " (" & $found.len & ")", items))
+
 proc nimbleDir(): string =
   ## the folder nimble runs in: the one with the project's .nimble file, else the project root
   loadNimbleInfo()

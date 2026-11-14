@@ -386,19 +386,35 @@ proc nxBlockValue*(lines: openArray[string], start, ind: int, val: string): stri
     result = (if isCase: v & ": " elif isWhen: "block: " else: v & " ") & last &
              (if elseVal.len > 0: " else: " & elseVal else: "") & " …"
 
+func nxItemsLeftOut*(item: string): int =
+  ## how many items one item of a literal stands for: 1 — or, for the `… 53 more` nxShortValue writes, those 53
+  let t = item.strip
+  if not t.startsWith("… "): return 1
+  var e = "… ".len
+  while e < t.len and t[e] in Digits: inc e
+  try: max(1, parseInt(t["… ".len ..< e]))
+  except ValueError: 1
+
 proc nxShortValue*(v: string): string =
   ## a declaration's value kept short (it is shown, and typed): what decides its type stays — the callee or
-  ## constructor of a long call (`ClCfg(…)`), the first item of a long array (`["CON", …]`)
+  ## constructor of a long call (`ClCfg(…)`), the first item of a long array, seq, set or table and how many more
+  ## there are (`["CON", … 21 more]`, `{"char": 1, … 56 more}.toTable`: an array's length is part of its type)
   if v.len <= 200: return v
   var e = 0
   while e < v.len and (nxIsIdent(v[e]) or v[e] == '.'): inc e
   if e > 0 and e < v.len and v[e] in {'(', '['}:
     let ce = nxMatchClose(v, e)
     if ce == v.high or ce < 0: return v[0 .. e] & "…" & (if v[e] == '(': ")" else: "]")
-  if v[0] == '[' or v.startsWith("@["):
+  if v[0] in {'[', '{'} or v.startsWith("@["):
     let b = if v[0] == '@': 1 else: 0
-    let first = nxSplitTop(v[b + 1 .. ^1], {','})
-    if first.len > 0 and first[0].len < 150: return v[0 .. b] & first[0].strip & ", …]"
+    let ce = nxMatchClose(v, b)
+    if ce > b and v.len - ce <= 60:
+      let items = nxSplitTop(v[b + 1 ..< ce], {','})
+      var n = 0
+      for it in items:
+        if it.strip.len > 0: inc n
+      if n > 0 and items[0].len < 150:
+        return v[0 .. b] & items[0].strip & (if n > 1: ", … " & $(n - 1) & " more" else: "") & v[ce .. ^1]
   v[0 ..< 197] & "…"
 
 proc nxSubstIdents*(s: string, sub: Table[string, string]): string =

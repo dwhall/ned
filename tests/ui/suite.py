@@ -1,5 +1,5 @@
 """ned's UI tests: every feature driven through tmux, the screen read back. Run them with run.py."""
-import shlex, subprocess, time, os, shutil, json, sys, re
+import shlex, subprocess, time, os, shutil, json, sys, re, glob, tempfile
 # the helpers live in this module's namespace (a test can point W elsewhere for a while)
 exec(compile(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'harness.py')).read(), 'harness.py', 'exec'))
 
@@ -11980,6 +11980,124 @@ def t_649_completion_docs_later():
     check('649 completion docs: written when ned quits straight after', wait_until(lambda: saved() is True, 6),
           repr(saved()))
 
+def t_650_safe_mode():
+    # 6.50: ned --safe starts with ned's defaults, no plugins and nothing kept from before — your settings and state
+    # are neither read nor changed
+    setup({"editor.vimMode": True})
+    cfg0 = open(CFG + '/ned/config.json').read()
+    open(W + '/s.txt', 'w').write('alpha\nbeta\n')
+    start('s.txt', w=110, h=30)
+    text('iXY'); time.sleep(0.4)
+    with_yours = screen()
+    tm('kill-server'); time.sleep(0.3)
+    state0 = sorted(os.listdir(STATE + '/ned')) if os.path.isdir(STATE + '/ned') else []
+    own0 = set(glob.glob(tempfile.gettempdir() + '/ned-%d/session-*' % os.getuid()))
+    start('--safe', 's.txt', w=110, h=30)
+    text('iXY'); time.sleep(0.4)
+    s = screen()
+    check('650 --safe: your settings are not read (vim mode is off: the i is typed, not a command)',
+          'XYalpha' in with_yours and 'iXYalpha' not in with_yours and 'iXYalpha' in s, s + with_yours)
+    keys('C-q'); time.sleep(0.4); keys('n'); time.sleep(1.2)
+    state1 = sorted(os.listdir(STATE + '/ned')) if os.path.isdir(STATE + '/ned') else []
+    check('650 --safe: your settings and what ned keeps between runs are left as they were',
+          open(CFG + '/ned/config.json').read() == cfg0 and state1 == state0, repr((state0, state1)))
+    left = set(glob.glob(tempfile.gettempdir() + '/ned-%d/session-*' % os.getuid())) - own0
+    check('650 --safe: its own folder is gone when ned leaves', not left, repr(left))
+
+def t_650_record_replay():
+    # 6.50: ned --record FILE writes what the terminal sent (keys, the mouse, its size) and the text of the files
+    # opened; ned --replay FILE plays it back in a folder of its own, with the recording's settings, at its size
+    setup({"editor.tabSize": 3})
+    rec = TMP + '/session.rec'
+    sh('rm -f ' + rec)
+    open(W + '/r.txt', 'w').write('one\ntwo\nthree\n')
+    start('--record', rec, 'r.txt', w=100, h=30)
+    keys('End'); text(' X'); keys('Enter', 'Tab'); text('héllo')
+    click(8, 6)                                           # (the mouse: the third line)
+    keys('End'); text('!'); keys('C-s'); time.sleep(0.5)
+    keys('C-q'); time.sleep(1.5)
+    made = ftext('r.txt')
+    r = open(rec, encoding='utf-8', errors='replace').read() if os.path.exists(rec) else ''
+    check('650 record: the session is in the file — the keys as text, the file opened, the size',
+          made.startswith('one X\n') and 'héllo' in made and made.count('!') == 1 and 'é' in r and
+          '["r.txt","one\\ntwo\\nthree\\n"]' in r and re.search(r'^r \d+ 100 30$', r, re.M), repr(made) + r[:1500])
+    check('650 record: your settings are in it without their secrets', '"editor.tabSize' in r.replace('\\"', '"')
+          and 'sk-test' not in r, r[:600])
+    check('650 record: what it holds is said when ned leaves', wait_for(r'recorded this session', 3) and
+          'r.txt' in screen(), screen())
+    # played back without its last key (the quit), in a bigger terminal, the project's own file gone
+    ls = r.rstrip('\n').split('\n')
+    while ls and '\\u0011' in ls[-1]: ls.pop()
+    open(rec, 'w', encoding='utf-8').write('\n'.join(ls) + '\n')
+    setup()
+    start('--replay', rec, w=140, h=40)
+    ok = wait_for(r'The recording ends here', 30)
+    s = screen()
+    rows = s.split('\n')
+    check('650 replay: the same text again, at the recording\'s size (a bigger terminal: its 30 rows)',
+          ok and all(x.strip() in s for x in made.split('\n')[:4]) and
+          any(re.search(r'Ln \d+, Col', x) for x in rows[29:30]) and not any(x.strip() for x in rows[30:]), s)
+    files = glob.glob(tempfile.gettempdir() + '/ned-%d/session-*/project/r.txt' % os.getuid())
+    check('650 replay: in a folder of its own, where the save went', len(files) == 1 and
+          open(files[0], encoding='utf-8').read() == made and not os.path.exists(W + '/r.txt'), repr(files))
+    keys('C-q'); time.sleep(1.5)
+    check('650 replay: Ctrl+Q leaves it, nothing of it stays, and it says what it played',
+          wait_for(r'played back .*session\.rec', 3) and
+          not glob.glob(tempfile.gettempdir() + '/ned-%d/session-*/*' % os.getuid()), screen())
+    # a recording is read with care: a path out of its folder is not written
+    bad = TMP + '/bad.rec'
+    open(bad, 'w').write('{"ned": "6.50.0", "args": [["../../escape.txt", -1, -1]], "env": {}, "config": "{}"}\n'
+                         'f 0 ["../../escape.txt", "no"]\nf 0 ["/tmp/ned-escape.txt", "no"]\nr 0 80 24\n'
+                         'i 0 "x"\nnonsense\ni 5 "\\u0011"\ni 5 "n"\n')
+    sh('rm -f /tmp/ned-escape.txt')
+    start('--replay', bad, w=100, h=30); time.sleep(2.5)
+    check('650 replay: a file outside the recording\'s folder is not written', not os.path.exists('/tmp/ned-escape.txt')
+          and not glob.glob(tempfile.gettempdir() + '/ned-%d/**/escape.txt' % os.getuid(), recursive=True), screen())
+    tm('kill-server'); time.sleep(0.3)
+
+def t_650_no_nimsuggest():
+    # 6.50: with Nim 2.4 or newer no nimsuggest is started for what the engine cannot tell — the compiler's reading of
+    # the text, which comes with its check (NIF), answers; with nim.compilerNif off it is asked as before
+    need('nim-2.4', 'nimsuggest')
+    spy, ran = TMP + '/spy', TMP + '/nimsuggest-ran'
+    os.makedirs(spy, exist_ok=True)
+    open(spy + '/nimsuggest', 'w').write('#!/bin/sh\necho ran >> %s\nexec %s/nimsuggest "$@"\n' % (ran, NIM24))
+    os.chmod(spy + '/nimsuggest', 0o755)
+    for nif in (True, False):
+        setup({"nim.nimsuggest": False, "nim.macroNames": False, "nim.compilerNif": nif})
+        shutil.rmtree(os.path.join(os.environ.get('XDG_CACHE_HOME', os.path.expanduser('~/.cache')), 'ned', 'oracle'),
+                      ignore_errors=True)
+        sh('rm -f ' + ran)
+        open(W + '/orc.nim', 'w').write('import std/macros\n\nmacro mk(n: untyped): untyped =\n  result = quote do:\n'
+                                        '    proc `n`(): int = 42\n\nmk(answer)\nlet x = answer()\necho x\n')
+        start('orc.nim', w=150, h=40, path=spy + ':' + NIM24 + ':' + TOOLS + ':$PATH'); time.sleep(1.0)
+        ok = wait_for(r'let x: int = answer\(\)', 60)
+        time.sleep(4)                                    # (the oracle's pause: it would have run by now)
+        check('650 a let a macro\'s proc gives: its type from the compiler%s' % (' (NIF)' if nif else ', by nimsuggest'),
+              ok, screen())
+        check('650 nimsuggest is %s' % ('not started with Nim 2.4' if nif else 'asked when nim.compilerNif is off'),
+              os.path.exists(ran) != nif, repr(os.path.exists(ran)))
+        tm('kill-server'); time.sleep(0.3)
+
+def t_650_signature_search():
+    # 6.50: Nim: find a routine by its signature… — what it takes and gives
+    setup({"nim.nimsuggest": False})
+    open(W + '/sig.nim', 'w').write('import std/strutils\nproc mix(a: string, n: int): seq[string] = @[a, $n]\n'
+                                    'echo "a,b".split(\',\')\n')
+    start('sig.nim', w=130, h=34); time.sleep(1.5)
+    palette('Nim: find a routine by its signature'); time.sleep(0.4)
+    text('(string, char) -> seq[string]'); keys('Enter')
+    ok = wait_for(r'split\(s: string, sep: char', 8)
+    check('650 by signature: (string, char) -> seq[string] finds split', ok, screen())
+    keys('Escape')
+    palette('Nim: find a routine by its signature'); time.sleep(0.4)
+    text('int, string -> seq[string]'); keys('Enter')
+    ok = wait_for(r'mix\(a: string, n: int\)', 8)
+    s = screen()
+    check('650 by signature: this file\'s own first, in any order of the types; Enter goes to it', ok, s)
+    keys('Enter'); time.sleep(0.6)
+    check('650 by signature: Enter goes to the declaration', re.search(r'Ln 2, Col', screen()), screen())
+
 tests = [t_edit_save_undo, t_find_replace, t_multicursor, t_project_search, t_terminal, t_run_file, t_lsp, t_lsp_diag, t_ai_chat, t_split_zen_theme, t_vim, t_recovery, t_quit_dirty, t_mixed_folder, t_builtin_nimsuggest, t_server_crash_restart, t_engine_member_completion, t_engine_hover_def_sig, t_engine_refs_rename, t_engine_imports, t_engine_without_nimsuggest, t_engine_outline_symbols, t_format_keeps_cursor, t_zen_vim, t_ai_insert, t_format_builtin, t_format_choice, t_reset_settings, t_52_refactors, t_52_format_selection, t_52_conflict, t_52_settings_search, t_52_mouse, t_521_debugger, t_521_touchbar, t_521_bp_follow_edits, t_522_navigation, t_522_peek_hierarchy_stage, t_522_rename_imports, t_522_shortcuts_markdown, t_522_multibuffer, t_522_nim_codegen, t_522_nim_tools, t_53_alerts_and_formatter, t_53_diff_view, t_53_rename_preview, t_53_debugger_watch_test, t_53_user_commands, t_531_help_menus, t_532_polish, t_54_git, t_55_publish, t_56_todos, t_561_review_fixes, t_562_format_cursor, t_563_open_folder, t_564_tiny_screens, t_564_save_safety, t_57_themes, t_57_ai, t_57_nim, t_57_git, t_571_rulers, t_572_editorconfig, t_572_tasks, t_572_errors, t_572_swatches, t_572_examples, t_59_small, t_59_html, t_59_problems_mb, t_59_lsp_more, t_59_langs_tests, t_59_ai_more, t_59_dap, t_510_large, t_510_debug_tools, t_510_testament, t_510_repl, t_510_nimble_outdated, t_510_merge_editor, t_510_spell, t_510_coverage, t_510_langs, t_510_mcp_more, t_510_emmet_css, t_510_sync, t_510_keymaps, t_510_accessible, t_510_workspace, t_510_remote, t_511_stale_errors, t_511_embedded, t_512_c_interop, t_512_refs_big, t_512_comp_stale, t_513_emit_edit, t_513_emit_errors, t_513_emit_c, t_514_emit_clangd, t_515_emit_more, t_515_strings, t_516_quickfixes, t_516_ai_fix, t_517_remote_git, t_517_workspace_git, t_518_macros, t_518_terminal, t_519_refactor, t_519_lists, t_520_agent_check, t_520_ai_tests, t_521_remote, t_521_git, t_521_format_self, t_522_perf, t_523_include, t_523_typehints, t_523_charlit, t_524_debug, t_524_format, t_524_deps, t_525_hints, t_525_engine, t_525_csv, t_525_profile, t_525_macro_nested, t_526_typing_errors, t_527_expand, t_527_complete, t_527_hover, t_528_hierarchy, t_528_refs, t_528_actions, t_529_clangd_fixes, t_529_examples, t_60_includes, t_60_protect, t_61_semantic, t_63_marks, t_63_git, t_63_format, t_63_paste, t_63_cdocs, t_64_engine, t_65_cengine, t_65_ligatures, t_66_cwrap, t_66_zen_menu, t_66_align_hints, t_66_trust, t_66_postfix, t_66_copies, t_66_test_on_save, t_66_ctvalues, t_66_include_check, t_67_github_signin, t_67_git_undo, t_67_commit_checks, t_67_review_comments, t_67_ai_grounded, t_67_ai_fix_test, t_67_format_changed, t_67_format_preview, t_67_yaml_toml, t_67_termux_clock, t_67_rich_colors, t_67_theme_editor, t_67_two_servers, t_67_lsp_links, t_67_ai_plan, t_67_ai_offline, t_68_nedfmt, t_68_engine_checks, t_68_compiler_answers, t_68_macro_names, t_68_settings_panel, t_69_locked_versions, t_69_expected_type, t_69_memory_layout, t_69_raises_hints, t_69_engine_hints, t_69_shared_settings, t_69_toolchain, t_69_lint_and_ci, t_610_expected_multiline, t_610_can_be_func, t_610_concepts, t_610_nim_coverage, t_610_lint_rules, t_610_imports_required, t_610_dep_tree_locked, t_610_project_checks, t_610_fmt_uses, t_611_terminal_scroll, t_611_frames_vt, t_611_perf_report, t_612_hints_ahead, t_612_reflow_comments, t_6112_examples_after_format, t_6112_long_line, t_6112_terminal_flood, t_612_nim3, t_612_nim3_port, t_612_hex, t_612_hex_exe, t_612_big_text, t_613_remote, t_613_terminal_answers, t_613_edit_tools, t_613_vim_filter, t_614_web_css, t_614_web_html, t_614_web_sql, t_614_picker_preview, t_614_jump_labels, t_614_git_new_folder, t_614_format_pieces, t_6141_quick_fix_keys, t_6141_ref_counts, t_6141_showcase, t_615_select_structure, t_615_surround, t_615_vim_surround, t_615_undo_tree, t_615_git_changes, t_615_next_edit, t_615_web_js, t_615_cpp, t_616_engine_worker, t_618_nedls_in_ned, t_619_nimble_resolve, t_619_plugins, t_619_plugins_vim, t_619_plugins_lsp_lang, t_619_hot_exit, t_619_encodings, t_619_key_conflicts, t_620_plugin_language, t_620_plugin_full_nim, t_6241_plugin_check, t_620_ast_docs, t_620_nimble_edit, t_620_emit_names, t_620_viewer, t_620_plugin_list, t_621_emit_format, t_621_reset, t_621_settings_form, t_621_fields, t_621_context_menus, t_621_drag_drop, t_621_atlas, t_621_decompile, t_621_new_project, t_622_settings_controls, t_622_nimscript, t_622_plugin_api, t_622_doc_comments, t_623_decompile_menu, t_623_align_comments, t_623_c_engine, t_623_emit_builtin_c, t_623_nim_rewrites, t_623_call_args, t_624_compiler_explorer, t_624_ce_toolbar, t_6241_dock_view_menu, t_6241_ce_all_procs, t_625_indent, t_625_plugins_menu, t_625_which_key, t_625_oil, t_625_engine_checks,
          t_625_chain_hints, t_625_rename_reach, t_625_completion_recent, t_625_oracle, t_625_c_if, t_625_c_checks,
          t_625_cpp_overloads, t_624_compiler_explorer_c,
@@ -11998,4 +12116,5 @@ tests = [t_edit_save_undo, t_find_replace, t_multicursor, t_project_search, t_te
          t_645_server_changes, t_645_crash, t_645_memory_back, t_65_vim_oracle,
          t_646_ai_tokens, t_646_bad_bytes, t_647_vim_keys_names, t_647_vim_esc_alt,
          t_648_acp_chat, t_648_acp_permissions, t_648_acp_stop_and_crash, t_648_acp_hostile, t_648_acp_v2_and_signin, t_648_acp_choose,
-         t_649_terminal_kitty_u, t_649_completion_docs_later]
+         t_649_terminal_kitty_u, t_649_completion_docs_later,
+         t_650_safe_mode, t_650_record_replay, t_650_no_nimsuggest, t_650_signature_search]

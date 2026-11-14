@@ -202,5 +202,13 @@ python3 tests/engine/scoreboard.py --engine ./ned-engine --nedls ./nedls --cdriv
   --c-files /tmp/lua/lapi.c /tmp/lua/lvm.c --cpp-files /tmp/tinyxml2/tinyxml2.cpp --n 40
 ```
 
+**Graded by the compiler itself.** nimsuggest is a yardstick with opinions of its own (and Nim 2.4's differs from
+2.2's, which is why the scoreboard pins 2.2). [`tests/engine/nifgrade.py`](../../tests/engine/nifgrade.py) asks the
+compiler instead: Nim 2.4's `nim nif` writes its reading of every module of a project — each name resolved to its
+declaration, each `let` and `var` with its type — and the engine is asked the same on ned's own source: Go to
+definition at every use (`--min`), and the type hint of every `let` and `var` written without its type
+(`--min-types`; the NIF's types as ned itself reads them: the driver's `nifhints`). The *grader* job runs it on
+`nedfmt.nim`, `index.nim` and `nedls.nim`; it lists the places that differ — the engine's to-do list.
+
 The longer comparisons — the whole standard library, nimble packages and the compiler — and the numbers behind the
 README's *How good it is* are described in [tests/engine/README.md](../../tests/engine/README.md).

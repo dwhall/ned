@@ -307,7 +307,10 @@ proc nifTypeText*(ns: seq[NifNode], i: int, nimony: bool): string =
   of "ref", "ptr":
     if kids.len != 1: return ""
     let t = nifTypeText(ns, kids[0], nimony)
-    if t.len > 0: n.tag & " " & t else: ""
+    # (`Node = ref object`: the compiler names the object `Node:ObjectType` — the type is Node)
+    if t.endsWith("\\3AObjectType"): t[0 ..< t.len - "\\3AObjectType".len]
+    elif t.len > 0: n.tag & " " & t
+    else: ""
   of "at":
     if kids.len < 2: return ""
     var head = kids[0]

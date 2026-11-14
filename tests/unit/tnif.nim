@@ -84,6 +84,16 @@ suite "Nim 2.4's NIF (nim nif)":
     check nifPrint(ns, top[1], false) == "proc answer(): int =\n  result = 42"
     check nifPrint(ns, top[2], false) == "let s1: string = show(3)"
 
+  test "a type written as Nim: `Node = ref object` is Node, not the object the compiler names for it (6.50)":
+    # (`let m = look(name)` showed `: ref CxMacro\3AObjectType` after a save)
+    let ns = nifParse(@["(stmts (let :m.0.app . . (ref CxMacro\\3AObjectType.0.cinxyz) .)" &
+                        " (let :s.0.app . . (ref StreamObj.0.strea1) .)" &
+                        " (let :q.0.app . . (at seq.0.sysvq0asl (ref CxFile\\3AObjectType.0.cinxyz)) .))"], before = true)
+    var types: seq[string]
+    for i, n in ns:
+      if n.tag in ["ref", "at"] and ns[n.parent].tag == "let": types.add nifTypeText(ns, i, false)
+    check types == @["CxMacro", "ref StreamObj", "seq[CxFile]"]
+
   test "a form the printer does not write: nothing (the compiler is asked instead)":
     let ns = nifParse(@["(stmts (emit \"x\"))"], before = true)
     check nifPrint(ns, nifTopStatements(ns)[0], false) == ""

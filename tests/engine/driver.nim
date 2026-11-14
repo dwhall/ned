@@ -97,6 +97,36 @@ when isMainModule:
         for l, hs in b.inlays:
           for (c, lab) in hs: arr.add %*[l, c, lab]
         ans["hints"] = arr
+      of "nifhints":
+        # the types the compiler gave the file's lets and vars, as ned reads them from its NIF (`nif`: a `nim nif`
+        # file with main.txt beside it) and shows them: [line, the column after the name, the type] — where the
+        # engine's hints go
+        var arr = newJArray()
+        let fx = nifFactsBuild(path, j{"nif"}.getStr, true)
+        let b = newBuffer()
+        b.path = path
+        b.lines = ls
+        b.lang = detectLang(path, "")
+        engineInlays(b, 0, ls.high)
+        for l, hs in fx.hints:
+          if l < 0 or l >= ls.len: continue
+          for (name, t) in hs:
+            var i = 0
+            while i < ls[l].len:
+              if ls[l][i] in IdentStartChars and (i == 0 or ls[l][i - 1] notin IdentChars):
+                var e = i
+                while e < ls[l].len and ls[l][e] in IdentChars: inc e
+                if nxNorm(ls[l][i ..< e]) == nxNorm(name):
+                  if e < ls[l].len and ls[l][e] == '*': inc e
+                  var shown = t
+                  for (c, lab) in b.inlays.getOrDefault(l):
+                    # (as the editor draws it: the engine's name for the type when it is that type by its name)
+                    if c == e and nifSameByName(b, lab, t): shown = lab.strip(chars = {':', ' '})
+                  arr.add %*[l, e, shown]
+                  break
+                i = e
+              else: inc i
+        ans["hints"] = arr
       of "refs":
         # (the references in this file: what nimsuggest's `use` says for it)
         let b = newBuffer()

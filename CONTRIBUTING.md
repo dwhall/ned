@@ -9,6 +9,11 @@ Thank you for wanting to make ned better. Bug reports, ideas, themes, documentat
 - *Help › Copy info for bug report* puts ned's version, your terminal, OS and the relevant settings on the
   clipboard — paste that into the issue.
 - If ned ever showed **Internal error**, attach `~/.local/state/ned/errors.log`.
+- Does it happen with `ned --safe` (default settings, no plugins)? Then it is not your settings.
+- Best of all, record it: `ned --record bug.rec FILE`, do what goes wrong, quit, and attach `bug.rec` —
+  `ned --replay bug.rec` shows it to us as it happened. The recording holds every key you typed and the text of
+  the files you opened: it is a text file, read it first
+  ([Troubleshooting](docs/guide/troubleshooting.md)).
 - Say what you did, what you expected and what happened instead. A small file that shows the problem is worth a
   thousand words; a screenshot helps for anything you can see.
 - A security problem? Please don't open a public issue — see [SECURITY.md](SECURITY.md).

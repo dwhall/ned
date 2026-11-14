@@ -33,7 +33,17 @@ def which(exe):
     """an optional tool, looked for on the tests' PATH too"""
     return shutil.which(exe, path=TOOLS + ':' + os.environ.get('PATH', '/usr/bin:/bin'))
 
-NIM24 = os.environ.get('NED_TEST_NIM24', '')   # (a Nim 2.4 or newer's bin folder, for the tests of `nim nif`)
+def _nim_is_24(bindir):
+    """whether the nim in that folder is 2.4 or newer"""
+    try:
+        o = subprocess.run([os.path.join(bindir, 'nim'), '--version'], capture_output=True, text=True, timeout=20).stdout
+        m = re.search(r'Version (\d+)\.(\d+)', o)
+        return bool(m) and (int(m.group(1)), int(m.group(2))) >= (2, 4)
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+# (a Nim 2.4 or newer's bin folder, for the tests of `nim nif`: NED_TEST_NIM24, else the suite's own Nim when it is one)
+NIM24 = os.environ.get('NED_TEST_NIM24', '') or (NIMBIN if _nim_is_24(NIMBIN) else '')
 NODE_DIR = os.path.dirname(which('node') or '')
 SSH_DIR = os.path.dirname(which('ssh') or '')
 SSH_CTL = os.path.join(os.environ.get('TMPDIR', '/tmp'), 'ned-ssh-%d' % os.getuid())   # ned's shared SSH connections

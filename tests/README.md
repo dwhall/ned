@@ -65,7 +65,7 @@ Some tests use optional tools; when one is missing, the test is skipped and says
 | zsh, fish | the terminal's shell integration (bash is always tested) |
 | an en_US hunspell dictionary (`hunspell-en-us`) | spell checking |
 | an SSH server | remote folders over SSH: run [`ui/ssh-setup.sh`](ui/ssh-setup.sh) on a throwaway machine (it adds hosts to `~/.ssh/config`), then `NED_TEST_SSH=1` |
-| Nim 2.4 or newer, its `bin` folder in `NED_TEST_NIM24` (the suite itself runs with an older Nim too) | the compiler's reading (`nim nif`) of unsaved text |
+| Nim 2.4 or newer: the suite's own Nim when it is one, else its `bin` folder in `NED_TEST_NIM24` (the suite itself runs with an older Nim too) | the compiler's reading (`nim nif`) of unsaved text; no nimsuggest started |
 
 What ned sends to the terminal is checked too: [`ui/vt.py`](ui/vt.py), a small terminal model, reads every byte of
 a session (scroll regions, colours carried along a row, skipped cells) and the screen it ends up with must be the one

@@ -30,7 +30,8 @@ proc writeAll(s: string) =
     off += n
 
 proc getTermSize(): (int, int) =
-  ## the terminal's columns and rows, 80 × 24 when it does not say
+  ## the terminal's columns and rows, 80 × 24 when it does not say (a recording played back: the size it was made in)
+  if repSize[0] > 0: return repSize
   var ws: IOctl_WinSize
   if ioctl(1, TIOCGWINSZ, addr ws) == 0 and ws.ws_col > 0 and ws.ws_row > 0:
     (ws.ws_col.int, ws.ws_row.int)
@@ -114,6 +115,7 @@ proc gridResize() =
   ## reads the terminal's size and sizes the cell grid to it; the picture of what the terminal shows is forgotten, so
   ## the next frame is drawn whole
   (scrW, scrH) = getTermSize()
+  recResized(scrW, scrH)               # (ned --record)
   grid.setLen(scrW * scrH)
   prevGrid.setLen(0)
 

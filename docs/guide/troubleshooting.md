@@ -2,6 +2,22 @@
 
 - **Start here:** `ned --check` (or *Help › Check setup*) shows which tools ned found and how to install the
   missing ones. When you report a problem, *Help › Copy info for bug report* gives the details to paste.
+- **Is it your settings or a plugin?** `ned --safe FILE` starts with ned's default settings, no plugins and
+  nothing kept from before; your own settings and state are neither read nor changed. If the problem is gone, it
+  is in one of them.
+- **Show it as it happened:** `ned --record bug.rec FILE` records the session — every key and mouse event, what
+  the terminal answers, its size, and the text of the files you open — into `bug.rec`. Do what goes wrong, quit,
+  and attach the file to your report: `ned --replay bug.rec` plays it back on another machine, key by key, with
+  the same pauses. Your settings apply while you record (and go into the recording without their secrets); your
+  last session is not brought back, so the recording starts from a known place. The recording is a text file: it
+  holds everything you typed — a password typed in ned's terminal too — and the text of those files, so read it
+  before you send it. It does not hold the rest of your project: for a problem with completion or errors across
+  files, send the project as well (`ned --replay bug.rec FOLDER` plays it in a copy of FOLDER).
+- **Playing a recording back** types again what was typed, in ned's terminal too, so play only recordings you
+  trust. `ned --replay` runs in a folder of its own, with the recording's settings and none of your state; on
+  Linux it is also kept inside that folder, with no network (Landlock; ned says when it leaves if the system has
+  none). Ctrl+Q stops it; when the recording ends, the keys are yours. To stop before its end, delete its last
+  lines: each line is one event.
 - **Several nimsuggest processes** — open *Nim: language server status*: it lists each process and why it
   exists. With the built-in engine there is one per project at most; with nimlangserver it is usually a test
   file with `nim.maxNimsuggestProcesses` ≥ 2, or a `nim.projectMapping` of your own.
