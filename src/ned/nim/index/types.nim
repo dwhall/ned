@@ -1708,7 +1708,8 @@ proc nxTypeOfExpr*(f: NxFile, sc: NxScope, locals: seq[NxSym], e: string, line, 
       let rt = nxTypeOfExpr(f, sc, locals, rest, line, depth + 1).typ
       if rt.len > 0:
         let rr = nxResolveAlias(sc, nxStripMods(rt))
-        if rr in NxInts or rr in NxFloats: return NxVal(typ: nxStripMods(rt))
+        # (-n, +n, ~n keep a number's type; %n is json's, ^n a BackwardsIndex: what their operator returns)
+        if s[0 ..< k] in ["-", "+", "~"] and (rr in NxInts or rr in NxFloats): return NxVal(typ: nxStripMods(rt))
         let ct = nxCallType(f, sc, locals, s[0 ..< k], rt, line, depth, @[], 1, @[])
         if ct.len > 0: return NxVal(typ: ct)
   # literals

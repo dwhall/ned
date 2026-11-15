@@ -972,13 +972,16 @@ proc nxExports*(path: string, depth: int, seen: var HashSet[string], res: var se
       # the declaration being looked at
       template s: untyped = g.syms[i]
       if s.exported: res.add NxRef(file: g, idx: int32(i))
-  if f.exports.len == 0: return
+  # (what it re-exports — an include file's `export` is the module's too: index/nimscript's `export tables`)
+  var exps: seq[string]
+  for g in parts: exps.add g.exports
+  if exps.len == 0: return
   var mods = initTable[string, string]()
   for g in parts:
     for im in g.imports:
       if im.isInclude: continue
       mods[nxModuleName(if im.alias.len > 0: im.alias else: im.spec)] = nxResolve(g.path, im.spec)
-  for e in f.exports:
+  for e in exps:
     let nm = nxModuleName(e.split(" except ")[0])
     if nm in mods: nxExports(mods[nm], depth + 1, seen, res)
     else:
@@ -1299,11 +1302,13 @@ proc nxOverHost(f: NxFile, hs: NxScope, st: string): NxScope =
       for x in l.refs:
         if result.refs.nxHidden(li, x): inc result.refs.hidden
 
+proc nxSameImports(a, b: NxFile): bool
+
 proc nxPatchScope(old: NxScope, path: string, g: NxFile): NxScope =
   ## the scope with one of the files the module includes in its new version (`g`): that file's names taken out and
   ## the new ones put in their place, the rest kept — no gathering and sorting a hundred thousand names again for a
   ## keystroke in one include file of a big program (ned's own source has 290). nil when the file's names are not
-  ## one block of names the module took all of
+  ## one block of names the module took all of, or its imports changed
   for li, l in old.refs.layers:
     # (an import's: its layer is made again — not the includer's names, where this file's are hidden)
     if path in l.paths and not old.refs.nxHidesPath(li, path): return nil
@@ -1314,6 +1319,7 @@ proc nxPatchScope(old: NxScope, path: string, g: NxFile): NxScope =
       if a < 0: a = i
     elif a >= 0 and e < 0: e = i
   if a < 0: return nil
+  if not nxSameImports(old.refs.own[a].file, g): return nil    # (its imports are the module's too: made again)
   if e < 0: e = old.refs.own.len
   let n = g.syms.len
   let delta = n - (e - a)
@@ -1532,8 +1538,8 @@ proc nxScopeStamp(f: NxFile): string =
   f.stamp & "/" & nxScopeImports(f)
 
 proc nxScope*(f: NxFile): NxScope =
-  ## what `f` can see: its own declarations, system, and its imports (a file another one `include`s: what that
-  ## one sees)
+  ## what `f` can see: its own declarations, system, its imports and those of the files it includes (a file another
+  ## one `include`s: what that one sees)
   if f == nil: return NxScope()
   inc nxBuildDepth                     # (no parsed file is dropped while a scope is made: it would hold the old one)
   defer: nxBuildDone(f.path)
@@ -1656,11 +1662,24 @@ proc nxScope*(f: NxFile): NxScope =
         nxLayerKeep(sysKey, l)
     result.refs.layers.add l
     sysSeen = l.paths
-  for im in f.imports:
+  # (the module's imports, then those of the files it includes — an include is the text put in its place: nedls.nim
+  #  includes ned.nim, whose imports its other files use — each module once)
+  # shortcut: all of them for the whole module, wherever the include is: the compiler would not let a file included
+  # before the import see it (a program that compiles never needs that)
+  var imps: seq[(string, NxImport)]
+  for im in f.imports: imps.add (f.path, im)
+  for g in nxIncluded(f):
+    for im in g.imports: imps.add (g.path, im)
+  var impSeen: HashSet[string]
+  for (fromPath, im) in imps:
     if im.isInclude: continue
-    let p = nxResolve(f.path, im.spec)
-    if p.len == 0: continue
-    result.modules[nxModuleName(if im.alias.len > 0: im.alias else: im.spec)] = p
+    let p = nxResolve(fromPath, im.spec)
+    if p.len == 0 or p == f.path: continue
+    let ik = p & "|" & im.alias & "|" & im.only.join(",") & "|" & im.excepts.join(",")
+    if ik in impSeen: continue
+    impSeen.incl ik
+    let mname = nxModuleName(if im.alias.len > 0: im.alias else: im.spec)
+    if fromPath == f.path or mname notin result.modules: result.modules[mname] = p
     let (only, excepts) = (im.only, im.excepts)
     proc impRefs(seen: var HashSet[string]): seq[NxRef] =
       ## the names one import brings in: the module's exports, cut down to the `only` list or without the `except` ones,

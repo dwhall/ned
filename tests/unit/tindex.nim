@@ -1067,4 +1067,40 @@ suite "found by the grades against the compiler (6.52)":
     let sc = nxScope(f)
     check nxTypeOfExpr(f, sc, nxLocals(f, ls, 4, 0), "e", 4, 0).typ == "int"
 
+  test "a prefix operator other than - + ~ on a number: what it returns (%n is a JsonNode)":
+    let (f, ls) = fixture("import std/json\nproc go(n: int) =\n  let j = %n\n  let m = -n\n  echo j, m\n")
+    let sc = nxScope(f)
+    check nxTypeOfExpr(f, sc, nxLocals(f, ls, 4, 0), "j", 4, 0).typ == "JsonNode"
+    check nxTypeOfExpr(f, sc, nxLocals(f, ls, 4, 0), "m", 4, 0).typ == "int"
+
+  test "a routine whose body is in brackets over the lines below ends where they end":
+    # (ui/telescope.nim's `proc tsNimNameAct(path, name: string): Action = (proc() =⏎ let l = …⏎ …())`)
+    let (f, _) = fixture("proc act(n: int): proc() = (proc() =\n  let k = n + 1\n  echo k)\n\nproc after() = discard\n")
+    var line, endLine = -1
+    for s in f.syms:
+      if s.name == "act": (line, endLine) = (s.line, s.endLine)
+    check line == 0
+    check endLine == 2
+    check nxEnclosing(f, 1) >= 0
+
+suite "an include file's imports (6.52)":
+  test "a module sees what the files it includes import, and so do its other include files":
+    # (nedls.nim includes ned.nim, whose imports nedls's own files use)
+    createDir(dir / "inc")
+    writeFile(dir / "inc" / "base.nim", "import std/strutils\nproc baseOne(): int = 1\n")
+    writeFile(dir / "inc" / "more.nim", "proc moreOne(s: string): string =\n  let t = s.strip\n  t\n")
+    writeFile(dir / "inc" / "top.nim", "include base\ninclude more\n")
+    let f = nxLoad(dir / "inc" / "more.nim")
+    let ls = readFile(dir / "inc" / "more.nim").split('\n')
+    let sc = nxScope(f)
+    check nxTypeOfExpr(f, sc, nxLocals(f, ls, 2, 0), "t", 2, 0).typ == "string"
+
+  test "an include file's `export` is the module's: who imports it sees what it re-exports":
+    writeFile(dir / "inc" / "reex.nim", "import std/tables\nexport tables\n")
+    writeFile(dir / "inc" / "lib2.nim", "include reex\nproc libOne*(): int = 1\n")
+    writeFile(dir / "inc" / "user2.nim", "import lib2\nvar t = initTable[string, int]()\necho t.len\n")
+    let f = nxLoad(dir / "inc" / "user2.nim")
+    let ls = readFile(dir / "inc" / "user2.nim").split('\n')
+    check nxTypeOfExpr(f, nxScope(f), nxLocals(f, ls, 2, 0), "t", 2, 0).typ == "Table[string, int]"
+
 removeDir(dir)

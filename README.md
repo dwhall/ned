@@ -24,7 +24,7 @@ Made by **Sultan Al Isaiee** ([@foxoman](https://github.com/foxoman)) — [www.f
 
 ## Contents
 
-- [What's new in 6.52](#whats-new-in-652) · [6.51](CHANGELOG.md#whats-new-in-651) · [6.50](CHANGELOG.md#whats-new-in-650) · [6.49](CHANGELOG.md#whats-new-in-649) · [6.48](CHANGELOG.md#whats-new-in-648) · [6.47.1](CHANGELOG.md#whats-new-in-6471) · [6.47](CHANGELOG.md#whats-new-in-647) · [6.46](CHANGELOG.md#whats-new-in-646) · [6.45](CHANGELOG.md#whats-new-in-645) · [6.44](CHANGELOG.md#whats-new-in-644) · [6.43.1](CHANGELOG.md#whats-new-in-6431) · [6.43](CHANGELOG.md#whats-new-in-643) · [6.42.1](CHANGELOG.md#whats-new-in-6421) · [6.42](CHANGELOG.md#whats-new-in-642) · [6.41.1](CHANGELOG.md#whats-new-in-6411) · [6.41](CHANGELOG.md#whats-new-in-641) · [6.40](CHANGELOG.md#whats-new-in-640) · [6.39](CHANGELOG.md#whats-new-in-639) · [6.38](CHANGELOG.md#whats-new-in-638) · [6.37](CHANGELOG.md#whats-new-in-637) · [6.36](CHANGELOG.md#whats-new-in-636) · [6.35](CHANGELOG.md#whats-new-in-635) · [6.34](CHANGELOG.md#whats-new-in-634) · [6.33](CHANGELOG.md#whats-new-in-633) · [6.32](CHANGELOG.md#whats-new-in-632) · [older releases](CHANGELOG.md)
+- [What's new in 6.52.1](#whats-new-in-6521) · [6.52](#whats-new-in-652) · [6.51](CHANGELOG.md#whats-new-in-651) · [6.50](CHANGELOG.md#whats-new-in-650) · [6.49](CHANGELOG.md#whats-new-in-649) · [6.48](CHANGELOG.md#whats-new-in-648) · [6.47.1](CHANGELOG.md#whats-new-in-6471) · [6.47](CHANGELOG.md#whats-new-in-647) · [6.46](CHANGELOG.md#whats-new-in-646) · [6.45](CHANGELOG.md#whats-new-in-645) · [6.44](CHANGELOG.md#whats-new-in-644) · [6.43.1](CHANGELOG.md#whats-new-in-6431) · [6.43](CHANGELOG.md#whats-new-in-643) · [6.42.1](CHANGELOG.md#whats-new-in-6421) · [6.42](CHANGELOG.md#whats-new-in-642) · [6.41.1](CHANGELOG.md#whats-new-in-6411) · [6.41](CHANGELOG.md#whats-new-in-641) · [6.40](CHANGELOG.md#whats-new-in-640) · [6.39](CHANGELOG.md#whats-new-in-639) · [6.38](CHANGELOG.md#whats-new-in-638) · [6.37](CHANGELOG.md#whats-new-in-637) · [6.36](CHANGELOG.md#whats-new-in-636) · [6.35](CHANGELOG.md#whats-new-in-635) · [6.34](CHANGELOG.md#whats-new-in-634) · [6.33](CHANGELOG.md#whats-new-in-633) · [6.32](CHANGELOG.md#whats-new-in-632) · [older releases](CHANGELOG.md)
 - [Features](#features)
 - [Installing](#installing)
 - [First steps](#first-steps)
@@ -32,6 +32,17 @@ Made by **Sultan Al Isaiee** ([@foxoman](https://github.com/foxoman)) — [www.f
 - [Contributing](#contributing)
 
 ---
+
+## What's new in 6.52.1
+
+**The engine sees what a program's include files import.** In a program put together with `include` — nedls is one:
+it includes ned.nim, then its own files — the files after the first had no types, hints or completions from the
+standard library, because the engine took a module's imports only from the module itself. Now a module sees what
+each of its include files imports, and an include file's `export` counts for the module. The engine also knows the
+type of `%x` (json's, not the number's) and the lets inside a routine whose body is a `(proc() = …)` over the lines
+below. Graded against the compiler on ned's own source, its types now agree everywhere they are graded — 5,793 lets
+and vars in `nedfmt`, the engine and nedls — and Go to definition on 99.9% or more; GitHub's check now asks for
+99.5% of both ([Nim IDE](docs/guide/nim.md)).
 
 ## What's new in 6.52
 
@@ -240,7 +251,7 @@ ned
 ```
 
 or, from the project folder: `nimble termux` (ned, with `nedfmt` and `nedls` beside it) — or a ready-made package,
-`pkg install ./ned_6.52.0_aarch64.deb` (ned, nedls, nedfmt; the example plugins in `$PREFIX/share/ned/plugins`):
+`pkg install ./ned_6.52.1_aarch64.deb` (ned, nedls, nedfmt; the example plugins in `$PREFIX/share/ned/plugins`):
 `nimble termuxdeb` makes it on a Linux machine (with zig).
 
 The Nim IDE features need nothing more: the engine is built in, and `nim check` does the rest.

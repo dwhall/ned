@@ -151,6 +151,12 @@ def main():
         code = code[:code.index('#')] if '#' in code else code                      # (not in a comment)
         hits = [m.start() for m in re.finditer(r'[A-Za-z_\x80-\xff][\w\x80-\xff]*', code) if norm(m.group()) == norm(name)]
         if len(hits) != 1: continue
+        # (a name declared at this place — a parameter in a routine's header, a field or a variable before its `:` —
+        # is not a use: where the NIF has a node of another line there, the engine's answer, this place, is right)
+        after = code[hits[0] + len(name):].lstrip()
+        decl_head = re.match(r'\s*(proc|func|method|iterator|template|macro|converter)\b', code) and \
+                    '(' in code[:hits[0]] and after[:1] in (':', ',', '=') and not after.startswith('==')
+        if decl_head or (code[:hits[0]].strip() == '' and after[:1] == ':' and not after.startswith(':=')): continue
         # (the NIF can give a node of the next line — or the one before — this line's place: a name written on a
         # line beside this one too is not asked, its answer may be that line's)
         def near(k):

@@ -285,7 +285,7 @@ jobs:
       - name: The grades
         run: |
           for m in src/nedfmt.nim src/ned/nim/index.nim src/nedls.nim; do
-            python3 tests/engine/nifgrade.py $m --driver ./ned-engine --min 99 --min-types 98 --show 10 | tee -a "$GITHUB_STEP_SUMMARY" || exit 1
+            python3 tests/engine/nifgrade.py $m --driver ./ned-engine --min 99.5 --min-types 99.5 --show 10 | tee -a "$GITHUB_STEP_SUMMARY" || exit 1
           done
 
   soak:

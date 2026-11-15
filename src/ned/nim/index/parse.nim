@@ -863,6 +863,9 @@ proc nxParse*(lines: openArray[string], path: string, keepInactive = false): NxF
           if pe >= pr + 2: s.pragmas = t[pr + 2 ..< pe].strip      # (`{.}` while typing has none)
         addSym(s)
         if opensBlock: stack.add NxFrame(ind: ind, kind: bkRoutine, sym: f.syms.high)
+        elif i - 1 > startLine and f.syms.len > 0 and f.syms[^1].name == nm and nxFindTop(t, '=', w0end) > 0:
+          # (`proc act(): Action = (proc() =⏎ …)`: a body in brackets over the lines below — they are the routine's)
+          f.syms[^1].endLine = i - 1
       elif w0 in ["import", "include", "export"] and rest.len > 0 and rest[0] in {' ', '"'}:
         nxParseImports(f, rest, startLine, w0)
       elif w0 == "from" and " import " in rest:

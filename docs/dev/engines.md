@@ -210,7 +210,10 @@ definition at every use (`--min`), and the type hint of every `let` and `var` wr
 (`--min-types`; the NIF's types as ned itself reads them: the driver's `nifhints`). The *grader* job runs it on
 `nedfmt.nim`, `index.nim` and `nedls.nim`; it lists the places that differ — the engine's to-do list. An alias the
 engine names (`Hash`, `BiggestInt`, `File`) counts as the type the compiler writes out (`int`, `int64`, `ptr CFile`):
-the driver's `alias` follows it.
+the driver's `alias` follows it, inside a generic too (`seq[JsonNode]`), from where each alias is declared. A name
+declared at the place asked — a parameter in a routine's header, a field — is not asked: the NIF can have a node of
+another line there. In 6.52 every type graded agrees (`nedfmt.nim` 488, `index.nim` 1,000, `nedls.nim` 4,305) and
+Go to definition 99.9–100% — the job wants 99.5% of each.
 
 **Every NIF goes to the worker** when there is one (6.52: a 3 MB one took half a second on a tablet, after each
 save). **A big NIF** (over `NifReadMax`, 3 MB: `index.nim`'s is 4.3 MB, ned's own module with its includes 23 MB)
@@ -220,7 +223,7 @@ and the typing check hand it to the engine worker (`wkNifFacts` → the worker's
 ends, the statements still open first in each piece — and sends the facts back as JSON (`nifFactsJson`). The
 colours of the names are worked out at the end, once every declaration of the module is known. The 23 MB NIF:
 about half a second here, 119 MB at most, against more than 400 MB as one tree. The grader reads them the same way,
-so `index.nim` (1,000 lets and vars) and `nedls.nim` — which includes all of ned: 4,231 — are graded in full.
+so `index.nim` (1,000 lets and vars) and `nedls.nim` — which includes all of ned: 4,305 — are graded in full.
 
 The longer comparisons — the whole standard library, nimble packages and the compiler — and the numbers behind the
 README's *How good it is* are described in [tests/engine/README.md](../../tests/engine/README.md).

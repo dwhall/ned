@@ -83,21 +83,41 @@ when isMainModule:
           t = nxTypeOfExpr(f, sc, nxLocals(f, ls, line, col), j{"text"}.getStr, line, 0).typ
         ans["type"] = %t
       of "alias":
-        # a type's name with its aliases followed to what they name (type Hash = int: int; File = ptr CFile)
-        var t = j{"type"}.getStr.strip
-        if f != nil:
-          let sc = nxScope(f)
+        # a type with its aliases followed to what they name (type Hash = int: int; File = CFilePtr = ptr CFile;
+        # seq[JsonNode]: seq[ref JsonNodeObj]) — each name in it, from where the alias before it was declared
+        proc follow(name: string, sc0: NxScope): string =
+          ## a plain type name through its aliases (not distinct types, objects, enums …)
+          var (t, sc) = (name, sc0)
           for _ in 0 .. 5:
-            if nxBaseName(t) != t: break           # (a plain name only: a generic one would need its arguments put in)
             var nxt = ""
+            var nsc: NxScope = nil
             for r in nxTypeSyms(sc, t):
               let d = r.sym.typ.strip
               if d.len > 0 and not d.startsWith("distinct") and d.find("object") < 0 and not d.startsWith("enum") and
                  not d.startsWith("tuple") and not d.startsWith("concept") and not d.startsWith("proc"):
-                nxt = d
+                (nxt, nsc) = (d, nxScope(r.file))
               break
             if nxt.len == 0 or nxt == t: break
-            t = nxt
+            if nxBaseName(nxt) != nxt: return nxt      # (ptr CFile, a generic: as it is written there)
+            (t, sc) = (nxt, nsc)
+          t
+        var t = j{"type"}.getStr.strip
+        if f != nil:
+          let sc = nxScope(f)
+          var o = ""
+          var k = 0
+          while k < t.len:
+            if t[k] in IdentStartChars:
+              var e = k
+              while e < t.len and t[e] in IdentChars: inc e
+              let w = t[k ..< e]
+              o.add (if w in ["seq", "array", "openArray", "set", "ref", "ptr", "var", "tuple", "Table", "range"]: w
+                     else: follow(w, sc))
+              k = e
+            else:
+              o.add t[k]
+              inc k
+          t = o
         ans["type"] = %t
       of "sug":
         var arr = newJArray()

@@ -95,7 +95,9 @@ suite "what a file sees, in shared layers":
     for nm in ["one", "two", "top"]:
       check nxLookup(s1, nm).len == 1 and nxLookup(s2, nm).len == 1   # (a file's names once, not again from the layer)
     check nxLookup(s1, "toUpperAscii").len > 0 and nxLookup(s2, "fileExists").len > 0
-    check nxLookup(s1, "fileExists").len == 0                 # (part2's own import is not part1's)
+    # shortcut: an include file's import counts for the whole module (6.52: nedls's files see what ned.nim, which
+    # nedls.nim includes first, imports) — the compiler would let part1, included before it, not see it
+    check nxLookup(s1, "fileExists").len > 0
     var n, ones = 0
     var order: seq[(string, int32)]
     for r in s1.refs:
