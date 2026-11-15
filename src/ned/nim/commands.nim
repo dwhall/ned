@@ -63,6 +63,69 @@ proc cmdFindBySignature() =
                     $(r.sym.line + 1) & (if here: "" else: "  not imported here"), gotoAct(p, r.sym.line, r.sym.col))
     openActions("Routines that fit " & q.strip & " (" & $found.len & ")", items))
 
+proc zigExe(): string =
+  ## zig, the C compiler for other systems: on the path, else the one pip installs (ziglang); "" when there is none
+  result = findExe("zig")
+  if result.len > 0: return
+  for py in ["python3", "python"]:
+    if findExe(py).len == 0: continue
+    let (ok, o, _) = runFilter(py & " -c 'import ziglang, os; print(os.path.dirname(ziglang.__file__))' 2>/dev/null",
+                               "", getHomeDir(), 5000)
+    if ok and fileExists(o.strip / "zig"): return o.strip / "zig"
+
+const CrossTargets = [               # (what it is, --os, --cpu, zig's target, the program's ending)
+  ("Windows, x86-64", "windows", "amd64", "x86_64-windows-gnu", ".exe"),
+  ("Windows, ARM64", "windows", "arm64", "aarch64-windows-gnu", ".exe"),
+  ("macOS, Apple silicon", "macosx", "arm64", "aarch64-macos", ""),
+  ("macOS, Intel", "macosx", "amd64", "x86_64-macos", ""),
+  ("Linux, x86-64 (static)", "linux", "amd64", "x86_64-linux-musl", ""),
+  ("Linux, ARM64 (static)", "linux", "arm64", "aarch64-linux-musl", ""),
+  ("Android and Termux, ARM64", "android", "arm64", "aarch64-linux-musl", "")]
+
+proc crossBuildAct(label, os, cpu, triple, ext, name, main, zig: string): Action =
+  ## the build of `main` for one system (a proc of its own: each choice's closure keeps its own values)
+  result = proc() =
+    let w = privDir() / "zcc" / ("zcc-" & triple)
+    try:
+      createDir(parentDir(w))
+      writeFile(w, "#!/bin/sh\nexec " & quoteShell(zig) & " cc -target " & triple & " -g0 \"$@\"\n")
+      setFilePermissions(w, {fpUserRead, fpUserWrite, fpUserExec})
+      createDir(rootDir / "build")
+    except CatchableError as e:
+      error("Build for another system: " & e.msg)
+      return
+    let outFile = rootDir / "build" / (name & "-" & triple.split('-')[0] & "-" & os & ext)
+    runCommand("nim c -d:release --os:" & os & " --cpu:" & cpu & " --cc:clang --clang.exe:" & quoteShell(w) &
+               " --clang.linkerexe:" & quoteShell(w) & " --nimcache:" &
+               quoteShell(privDir() / "zcc" / ("cache-" & name & "-" & triple)) & " -o:" & quoteShell(outFile) &
+               " " & quoteShell(main), rootDir, proc(code: int) =
+      if code == 0: info("Built " & relPath(outFile) & " for " & label))
+
+proc cmdCrossBuild() =
+  ## Nim: build for another system… — the project's main module (else this file) built in release mode for Windows,
+  ## macOS, Linux or Android, with zig as the C compiler for that system, into build/ — in the Output panel, its
+  ## errors in Problems
+  when defined(windows):
+    info("Build for another system: from Linux, macOS or Termux (zig's wrapper is a shell script)")
+  else:
+    let b = buf()
+    var main = nimMainModule(rootDir)
+    if main.len == 0 and b.lang != nil and b.lang.mode == lmNim and b.path.len > 0: main = b.path
+    if main.len == 0:
+      info("Build for another system: open the Nim file to build")
+      return
+    let zig = zigExe()
+    if zig.len == 0:
+      warn("Build for another system needs zig, the C compiler for every system — " &
+           (if getEnv("TERMUX_VERSION").len > 0: "pkg install zig" else: "pip install ziglang, or your system's zig"))
+      return
+    let name = splitFile(main).name
+    var items: seq[(string, string, Action)]
+    for (label, os, cpu, triple, ext) in CrossTargets:
+      items.add act(label, "build/" & name & "-" & triple.split('-')[0] & "-" & os & ext,
+                    crossBuildAct(label, os, cpu, triple, ext, name, main, zig))
+    openActions("Build " & relPath(main) & " for…", items)
+
 proc nimbleDir(): string =
   ## the folder nimble runs in: the one with the project's .nimble file, else the project root
   loadNimbleInfo()

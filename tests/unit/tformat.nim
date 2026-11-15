@@ -37,6 +37,13 @@ suite "Nim":
     check files > 100
 
 suite "Nim: nph's layouts (6.32)":
+  test "a long `type X` with nothing after it, in a broken file, is left as it is (6.51)":
+    # (the parser fuzzer found it: the layout of a one-member type section read past its tokens)
+    var err = ""
+    let src = "type\n  N" & repeat("x", 120) & "\n\ntype\n  A* = int\n"
+    discard fFormat(src, err)
+    check true
+
   test "a `return @[…]` too long for its line: `return`, then the seq on the next line (6.32.1: it was refused)":
     let src = "proc f() =\n  for k in 0 ..< 3:\n    return @[line[0 ..< at].strip(leading = false), " &
               "spaces(lead + deeper) & line[at .. ^1]]\n"

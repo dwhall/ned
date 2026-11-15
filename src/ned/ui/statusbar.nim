@@ -119,8 +119,11 @@ proc progressStarting(): bool =
 proc oscProgressOk(): bool =
   ## terminals that show OSC 9;4 progress on their tab or task bar (elsewhere OSC 9 is a desktop notification!)
   if getEnv("WT_SESSION").len > 0 or getEnv("ConEmuPID").len > 0: return true
-  if getEnv("TERM_PROGRAM") == "ghostty":
-    let v = getEnv("TERM_PROGRAM_VERSION").split('.')
+  if getEnv("TERM_PROGRAM") == "ghostty" or termSays("ghostty"):
+    # (1.2 or newer: its version from TERM_PROGRAM_VERSION, else from what it said — "ghostty 1.2.0")
+    let said = tcName.split(' ')
+    let v = (if getEnv("TERM_PROGRAM_VERSION").len > 0: getEnv("TERM_PROGRAM_VERSION")
+             elif said.len > 1: said[1] else: "").split('.')
     if v.len >= 2 and v[0].allCharsInSet(Digits) and v[1].allCharsInSet(Digits) and v[0].len > 0 and v[1].len > 0:
       return parseInt(v[0]) > 1 or (parseInt(v[0]) == 1 and parseInt(v[1]) >= 2)
   false

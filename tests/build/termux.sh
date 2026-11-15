@@ -47,8 +47,16 @@ cp -r "$root/docs" "$pre/share/doc/ned/docs"       # (the README's links into do
 cp -r "$root/examples/plugins" "$pre/share/ned/plugins"
 size=$(du -sk "$pkg/data" | cut -f1)
 # (when installed: Nim's standard library read into ned's index cache once — the first session starts at once)
+# (and the Tab completion of ned's and nedfmt's options for bash, zsh and fish, made by ned itself; prerm takes it
+#  away again)
 cat > "$pkg/DEBIAN/postinst" <<'POST'
 #!/data/data/com.termux/files/usr/bin/sh
+P=/data/data/com.termux/files/usr/share
+mkdir -p "$P/bash-completion/completions" "$P/zsh/site-functions" "$P/fish/vendor_completions.d"
+ned --completions bash > "$P/bash-completion/completions/ned" 2>/dev/null || true
+cp "$P/bash-completion/completions/ned" "$P/bash-completion/completions/nedfmt" 2>/dev/null || true
+ned --completions zsh > "$P/zsh/site-functions/_ned" 2>/dev/null || true
+ned --completions fish > "$P/fish/vendor_completions.d/ned.fish" 2>/dev/null || true
 if command -v nim > /dev/null 2>&1; then
   echo "ned: reading Nim's standard library once, so that completion and hover start at once…"
   ned --warm-index -q || true
@@ -56,6 +64,14 @@ fi
 exit 0
 POST
 chmod 755 "$pkg/DEBIAN/postinst"
+cat > "$pkg/DEBIAN/prerm" <<'PRERM'
+#!/data/data/com.termux/files/usr/bin/sh
+P=/data/data/com.termux/files/usr/share
+rm -f "$P/bash-completion/completions/ned" "$P/bash-completion/completions/nedfmt" "$P/zsh/site-functions/_ned" \
+      "$P/fish/vendor_completions.d/ned.fish"
+exit 0
+PRERM
+chmod 755 "$pkg/DEBIAN/prerm"
 cat > "$pkg/DEBIAN/control" <<EOF
 Package: ned
 Version: $version

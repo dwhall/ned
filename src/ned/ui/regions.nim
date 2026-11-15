@@ -13,6 +13,7 @@ var
                            # click there is theirs, not the minimap's or the scroll bar's under them
   mouseX = -1
   mouseY = -1
+  mouseCtrl = false        # (6.51) Ctrl was held at the last mouse event
   mouseMovedAt: MonoTime
   tipShown = false
 

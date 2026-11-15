@@ -302,3 +302,4 @@ proc wkCChecks(b: Buffer): bool                                   # nim/worker.n
 when defined(nedMemProbe):
   proc memProbeTick(suffix: string)                               # app/memprobe_gen.nim (tests/memory/memprobe.py)
 proc plugJobDone(title: string, code: int, seconds: float)    # plugins/host.nim
+proc problemsFromText(source, text, cwd: string): int                # app/usercommands.nim

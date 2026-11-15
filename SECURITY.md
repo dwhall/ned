@@ -51,6 +51,20 @@ Only the newest release gets security fixes — updating is always the remedy.
   is trusted; a folder's own settings cannot add one (`lsp.alsoRun` is among the settings that need trust).
 - **The assistant's plan**: while it plans, it can only read — editing files and running commands are refused,
   not merely asked about. Each step it then takes has a restore point.
+- **The assistant's commands** (`ai.sandbox`, Linux): what it runs, and what an ACP agent asks ned to run, goes
+  through `ned --sandbox` — files changed only in the project, the caches and its own temporary folder, no
+  network, none of the environment's secrets (`sandboxEnv`). Its engine tools (`ai/enginetools`) only read, and
+  refuse files of secrets as `read_file` does.
+- **MCP servers on the web** (`ai.mcpServers` with a `url`): the headers — a token — come to `ned --mcp-http` in its
+  environment and go to curl in a private file (0600), never on a command line; `${NAME}` takes them from the
+  environment, so they need not be in the settings.
+- **Before a commit** (`git.secretsCheck`): what the commit adds is read for secrets (core/secrets, as for the
+  assistant) and for files of secrets; one found stops the commit until you say so.
+- **Releases** are signed: `SHA256SUMS.sig` by the key in `src/ned/app/release-signers`, checked by `ned --update`
+  (`releasecheck`). *Git: make a GitHub release…* signs with `git.releaseKey` in the namespace
+  `<repository>-release`.
+- **A plugin asking the assistant** (`askAi`) needs the "ai" permission: what it sends goes to your provider, with
+  your key, its secrets taken out first.
 - **AI on this device** talks only to the local server (`ai.localUrl`, 127.0.0.1 by default); a model is
   downloaded only when you pick it, and an install command runs in the terminal where you see it.
 - **Termux colours**: ned writes only `~/.termux/colors.properties`, keeping colours of your own beside it

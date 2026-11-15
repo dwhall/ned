@@ -608,6 +608,8 @@ proc usage() =
   echo "  --sandbox [options] [--] CMD…  run CMD (and what it starts) so that it changes files only in this folder,"
   echo "                        reads only it and the system's, and has no network (Linux: Landlock) — the way"
   echo "                        plugins run: ned --sandbox --help"
+  echo "  --completions SHELL   print the Tab completion of ned's and nedfmt's options for bash, zsh or fish:"
+  echo "                        ned --completions fish > ~/.config/fish/completions/ned.fish"
   echo "  --default-settings    print the full settings file with every option and its default"
   echo "  --doc-settings, --doc-commands  every setting, every command of the palette, as Markdown (the docs)"
   echo "  --reset [--yes] [--keep-plugins]  remove ned's settings, sessions, history, caches and downloads: ned"
@@ -901,6 +903,15 @@ proc main() =
         quit 0
       of "-v", "--version":
         echo AppName & " " & Version
+        quit 0
+      of "--mcp-http": quit mcpHttpMain(cl[ai - 1 .. ^1])      # (ai/mcphttp: an MCP server on the web, for ned itself)
+      of "--completions":
+        let sh = if ai < cl.len: cl[ai] else: ""
+        let s = shellCompletion(sh)
+        if s.len == 0:
+          stderr.writeLine "ned --completions bash|zsh|fish: the Tab completion of ned's and nedfmt's options"
+          quit 2
+        stdout.write s
         quit 0
       of "--engine-worker": workerMain()          # (the editor's engine worker: nim/worker.nim)
       of "--update": quit updateMain(cl[ai .. ^1])

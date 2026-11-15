@@ -382,6 +382,11 @@ proc callSummary(c: AiCall): string =
   of "write_file": "write " & j{"path"}.getStr
   of "run_command": "$ " & j{"command"}.getStr
   of "get_diagnostics": "diagnostics " & j{"path"}.getStr
+  of "nim_definition": "definition of " & j{"name"}.getStr & " · " & j{"path"}.getStr & ":" & $j{"line"}.getInt
+  of "nim_references": "uses of " & j{"name"}.getStr & " · " & j{"path"}.getStr & ":" & $j{"line"}.getInt
+  of "nim_type": "type of " & j{"expression"}.getStr
+  of "nim_routines_by_signature": "routines " & j{"signature"}.getStr
+  of "nim_outline": "outline " & j{"path"}.getStr
   else:
     if c.name.startsWith("mcp__") or c.name.startsWith("plugin__"):
       let parts = c.name[(if c.name.startsWith("mcp__"): 5 else: 8) .. ^1].split("__", 1)

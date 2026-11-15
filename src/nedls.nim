@@ -16,6 +16,8 @@ include "ned/nedls/langs.nim"
 include "ned/nedls/symbols.nim"
 include "ned/nedls/actions.nim"
 include "ned/nedls/server.nim"
+include "ned/nedls/mcpserver.nim"
 
 when isMainModule:
+  if "--mcp" in commandLineParams(): quit mcpServerMain(commandLineParams())
   quit nedlsMain()

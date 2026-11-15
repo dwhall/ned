@@ -775,6 +775,19 @@ shellAsync("git fetch --quiet") do (output: string, code: int):
   toast(if code == 0: "fetched" else: "git fetch: " & output)
 ```
 
+#### `askAi`
+
+```nim
+proc askAi(prompt: string, cb: proc(answer, error: string), system = "", smart = false, maxTokens = 1000)
+```
+
+Asks the assistant — the AI provider and model of your settings — and calls `cb` with its answer, or with what went wrong in `error` (no provider set up, the request failed). The plugin goes on meanwhile. `system`: how it should answer (else: briefly, as for a plugin); `smart`: the chat model (else the quick one, as for suggestions). Secrets in the prompt are taken out first, as for the chat. Needs the "ai" permission (`ValueError` without it): what the plugin sends goes to your provider, with your key.
+
+```nim
+askAi("A one-line commit message for:\n" & diff) do (answer, error: string):
+  if error.len == 0: toast(answer) else: toast("no answer: " & error)
+```
+
 #### type `RegexMatch`
 
 ```nim
@@ -1050,6 +1063,7 @@ Says what this plugin needs beyond editing, and why. `what` is one of:
 - "files": change files — `writeFile`, `mkDir`, `mvFile`, `rmFile`, `removeFile` …, saving a file outside the project (its own data needs none: `writeData`)
 - "clipboard": `clipboard` and `setClipboard`
 - "network": a plugin in full Nim's sockets (std/net, std/httpclient …)
+- "ai": `askAi` — what it sends goes to your AI provider
 
 `why` is what ned shows you when it asks. ned reads these lines, and what the source uses, before the plugin runs, and asks you once; a call that was not allowed raises `ValueError`. Nothing happens when this runs: write it in the top-level code, on one line, with two plain strings. Code ned cannot read ahead (`{.importc.}`, `{.emit.}`, a module from outside the plugin's folder) counts as asking for everything.
 

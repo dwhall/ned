@@ -480,6 +480,11 @@ made of each module, kept in ned's folder (`~/.cache/ned/nif`, never in the proj
   or Go to definition with no answer (`nim.compilerAnswers`): the compiler's reading has it. ned starts nimsuggest
   only when you turn it on (`nim.nimsuggest`) — hundreds of megabytes less on a phone.
 
+A module whose reading is very big — over 3 MB, one with many includes, as ned's own is (23 MB for all its
+files), or a huge generated one — is read by the engine worker (`nim.engineWorker`), in pieces of a statement at a
+time: the keys never wait for it, and it takes the memory of its biggest statement, not twenty times the file.
+Its colours, types and the rest come a moment after the check; without the worker they are left out, as before.
+
 While you type, the check after a pause reads the unsaved text the same way, and its colours, types, hover and Go
 to definition hold for the lines as they were then — a line you typed in above moves them along with it; a line
 you changed since keeps the engine's colours until the next check. A part with an error is left out of the
@@ -673,6 +678,22 @@ any that stopped with an error — tap it to restart it), what answers for the f
 clangd. In a Nim file with C in `{.emit}` (and in a C file when clangd is missing or stopped) the status bar says
 it too: *C · clangd* when clangd answers, *C · clangd …* while it starts, *C · clangd ✗* when it stopped, *C · ned*
 when ned's own C engine answers (no clangd, or `nim.emitClangd` off). A tap opens the Nim dock.
+
+## Build for another system
+
+*Nim: build for another system…* builds the project's main module (else the file you are in) in release mode for
+another system, with [zig](https://ziglang.org) as its C compiler — nothing else to install for it:
+
+| choice | what it makes |
+|---|---|
+| Windows, x86-64 or ARM64 | `build/<name>-x86_64-windows.exe` … |
+| macOS, Apple silicon or Intel | `build/<name>-aarch64-macosx` … |
+| Linux, x86-64 or ARM64 (static) | a program that needs no library of the system's |
+| Android and Termux, ARM64 | the same, for a phone or a tablet |
+
+zig is found on the PATH, else where `pip install ziglang` puts it (Termux: `pkg install zig`). The build runs in
+the Output panel, and its errors go to Problems. A program that uses a C library of the system's (OpenSSL, SQLite)
+needs it for the other system too; a pure Nim one does not. Not from Windows (zig's wrapper is a shell script).
 
 ## Other Nim features
 

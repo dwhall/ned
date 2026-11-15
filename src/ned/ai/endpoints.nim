@@ -95,6 +95,10 @@ proc openaiTools(flat: bool): JsonNode =
   for (n, d, sc) in AiTools:
     if flat: result.add %*{"type": "function", "name": n, "description": d, "parameters": parseJson(sc)}
     else: result.add %*{"type": "function", "function": {"name": n, "description": d, "parameters": parseJson(sc)}}
+  if engineToolsOn():
+    for (n, d, sc) in EngineTools:
+      if flat: result.add %*{"type": "function", "name": n, "description": d, "parameters": parseJson(sc)}
+      else: result.add %*{"type": "function", "function": {"name": n, "description": d, "parameters": parseJson(sc)}}
   for (n, d, sc) in mcpTools():
     if flat: result.add %*{"type": "function", "name": n, "description": d, "parameters": sc}
     else: result.add %*{"type": "function", "function": {"name": n, "description": d, "parameters": sc}}

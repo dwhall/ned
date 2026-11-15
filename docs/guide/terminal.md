@@ -13,8 +13,8 @@ hides it again. It is a real pseudo-terminal with an xterm-compatible emulator, 
 in it, with colours, the mouse and bracketed paste. Programs see `TERM=xterm-256color`, `COLORTERM=truecolor` and
 `TERM_PROGRAM=ned`.
 
-- **The shell** is `terminal.shell`, else `$SHELL`, else bash, zsh, fish or sh (on Windows, PowerShell). It starts in
-  the project folder, or in the current file's folder with `"terminal.cwd": "file"`.
+- **The shell** is `terminal.shell`, else `$SHELL`, else bash, zsh, fish or sh (on Windows, PowerShell, else
+  cmd.exe). It starts in the project folder, or in the current file's folder with `"terminal.cwd": "file"`.
 - **Scrolling back**: Shift+PgUp / Shift+PgDn, Shift+↑ / Shift+↓ or the mouse wheel; the corner shows where you
   are. `terminal.scrollback` lines are kept (3000).
 - **The mouse**: drag to select; right-click for *Copy*, *Paste*, *Clear*, *New terminal*, *Split* and *Kill
@@ -57,9 +57,24 @@ megabyte it printed; ned talks to it through a socket only you can open, in ned'
 
 ## Shell integration: the commands you ran
 
-With bash, zsh and fish, every prompt, command line, output and exit code is marked (OSC 133). ned adds this when it
-starts the shell — your `.bashrc`, `.zshrc` or `config.fish` is still read — and `"terminal.shellIntegration": false`
-turns it off.
+Every prompt, command line, output and exit code is marked (OSC 133). ned adds this when it starts the shell, and
+your own startup file is still read:
+
+| shell | how | read as well |
+|---|---|---|
+| bash | `--init-file` | `~/.bashrc` |
+| zsh | `ZDOTDIR` | your `.zshenv` and `.zshrc` |
+| fish | `--init-command` | `config.fish` |
+| sh, dash, ash, ksh, mksh, yash | `$ENV` (yash: `--rcfile`) | your `$ENV`, `~/.kshrc`, `~/.mkshrc`, `~/.yashrc` |
+| elvish | `-rc` | `rc.elv` |
+| xonsh | `--rc` | `~/.xonshrc`, `rc.xsh` and `rc.d` |
+| PowerShell (pwsh, powershell) | `-NoExit -Command` | your profile |
+| cmd.exe | `PROMPT` | — (it does not say a command's exit code) |
+| nushell | marks them itself | — |
+
+The POSIX shells have no hook before a command: they mark their prompt and how the last command ended, and the
+Enter you press is where the next one starts. A shell or a prompt that sends VS Code's marks (OSC 633) is read as
+well, with the command line it gives. `"terminal.shellIntegration": false` turns ned's part off.
 
 - A **●** beside each command in the terminal's gutter, **red when it failed**. The panel header shows the last
   result — *✓ 1.2 s* or *✗ exit 2* — and clicking it lists the commands.
@@ -69,6 +84,29 @@ turns it off.
   *Run it again*, *Open its output in a tab* (to search or save it) and *Go to it*.
 - In the palette: *Terminal: commands…* (newest first), *Terminal: run the last command again*, *Terminal: copy the
   last command's output*, *Terminal: previous command* and *Terminal: next command*.
+
+### The folder the shell is in, and what its output names
+
+The folder the shell is in (OSC 7: ned's shell integration says it at each prompt, nushell by itself) is followed:
+a split, or *New terminal* from a terminal's right-click menu, starts there, and the paths it prints are read from
+there.
+
+**Ctrl+click** on a line of the terminal opens what it names: a compiler's error (`src/app.nim(12, 5) Error: …`,
+`main.c:3:9: error: …`), a `path:line:col`, a Python traceback's line, or a file — at that line — and a web link in
+the browser. On a tablet, a long press (the right-click menu) offers *Open …* for the line it is on.
+
+### Tab completion of ned's options
+
+`ned --completions bash`, `zsh` or `fish` prints the Tab completion of ned's and nedfmt's options — taken from their
+own `--help` when you press Tab, so it never falls behind:
+
+```sh
+ned --completions bash > ~/.local/share/bash-completion/completions/ned
+ned --completions zsh > "${fpath[1]}/_ned"
+ned --completions fish > ~/.config/fish/completions/ned.fish
+```
+
+The Termux package puts all three in place.
 
 ![Two terminals side by side: each command marked, a failed one in red, and the one Ctrl+↑ went to](../../screenshots/terminal-commands.png)
 
@@ -215,6 +253,9 @@ ned does not guess what your terminal can do from its name: it asks when it star
 | the clipboard | — | copying goes through the terminal (OSC 52); pasting from other apps needs a helper (`termux-api`, `wl-clipboard`, `xclip`, `pbpaste`) |
 | scrolling | `ui.terminalScroll` | the terminal moves the lines and ned sends only the new ones — turn it off if scrolled text lands in the wrong place |
 | the mouse | `ui.mouse` | Alt+U turns it off for a moment so the terminal can select text |
+| its name | — | XTVERSION: what the terminal is (kitty, WezTerm, Ghostty, foot, iTerm2, tmux …) over ssh, mosh and `sudo` too, where `TERM_PROGRAM` does not reach — for pictures, progress on its tab and curly underlines; *Check setup* shows it |
+
+Inside tmux, zellij or GNU screen pictures are drawn in cells: they would not pass a terminal's pictures on.
 
 If something looks or behaves oddly, [Troubleshooting](troubleshooting.md) and the [FAQ](../FAQ.md#keys-and-the-terminal)
 list the settings that help.

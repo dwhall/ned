@@ -113,14 +113,15 @@ proc mdPicRow(path: string, cols, rows, k: int): seq[(Rgb, Rgb)] =
 
 proc picProtocol(): string =
   ## how the terminal draws pictures: pictures.draw, or (auto) what it is — kitty's protocol, iTerm2's, sixel —
-  ## else in cells (and always in cells inside tmux, which would not pass them on)
+  ## else in cells (and always in cells inside tmux, zellij or screen, which would not pass them on)
   let s = sStr("pictures.draw")
   if s in ["kitty", "iterm", "sixel", "cells"]: return s
-  if getEnv("TMUX").len > 0: return "cells"
+  if getEnv("TMUX").len > 0 or getEnv("ZELLIJ").len > 0 or getEnv("STY").len > 0 or termSays("tmux"): return "cells"
   let t = getEnv("TERM")
   let p = getEnv("TERM_PROGRAM")
-  if getEnv("KITTY_WINDOW_ID").len > 0 or t in ["xterm-kitty", "xterm-ghostty"] or p == "ghostty": return "kitty"
-  if p in ["iTerm.app", "WezTerm"]: return "iterm"
+  if getEnv("KITTY_WINDOW_ID").len > 0 or t in ["xterm-kitty", "xterm-ghostty"] or p == "ghostty" or
+     termSays("kitty", "ghostty"): return "kitty"
+  if p in ["iTerm.app", "WezTerm"] or termSays("iterm2", "wezterm"): return "iterm"
   if tcSixel: return "sixel"
   "cells"
 

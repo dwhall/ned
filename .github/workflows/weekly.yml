@@ -4,6 +4,8 @@
 #   fuzz (AddressSanitizer) — a build with stack traces, bounds checks and gcc's -fsanitize=address, then
 #                             tests/fuzz/batch.sh on six modes; fails on a crash, a hang, an internal error or a
 #                             sanitizer report (uploaded with the fuzzer's logs)
+#   nimony (newest)         — Nim 3's compiler as it is this week, built from its main branch, and ned's Nim 3 tests
+#                             with it: what changed in nimony and what ned must follow shows here, not on a tablet
 
 name: weekly
 
@@ -58,3 +60,31 @@ jobs:
           path: |
             /tmp/ned-fuzz-*-logs
             /tmp/ned-asan
+
+  nimony:
+    name: nimony (newest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: stable
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: sudo apt-get update && sudo apt-get install -y tmux
+      - name: Build nimony from its main branch
+        run: |
+          git clone -q --depth 1 https://github.com/nim-lang/nimony ~/.local/nimony
+          cd ~/.local/nimony
+          git submodule update --init --depth 1
+          nim c --hints:off -d:release src/hastur/hastur.nim
+          for t in nifler nimony lengc niflink nifmake pnak nifler2; do ./bin/hastur build $t; done
+          printf 'import std/syncio\necho 1 + 1\n' > /tmp/probe.nim && ./bin/nimony check /tmp/probe.nim
+          echo "$HOME/.local/nimony/bin" >> "$GITHUB_PATH"
+          git log -1 --format='nimony at %h, %cs: %s'
+      - name: Build ned
+        run: nim c -d:release --hints:off -o:ned src/ned.nim
+      - name: ned's Nim 3 tests
+        env:
+          NED_UI_FULL: "1"
+        run: python3 tests/ui/run.py ./ned t_612_nim3 t_627_nim3_contracts t_628_hastur_tests t_637_nim3_typing

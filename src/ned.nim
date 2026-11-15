@@ -38,7 +38,7 @@ from std/math import pow, round
 # the parts that stand on their own (modules: compiled separately, in parallel)
 import ned/core/images, ned/core/text, ned/core/editorconfig, ned/editor/regex, ned/format/formatters, ned/format/fmtcli, ned/nim/index,
        ned/nim/arccopies, ned/c/cindex, ned/c/cnim, ned/nim/nifread, ned/version, ned/testing/gcovdata, ned/editor/binfmt, ned/web/web, ned/core/encodings,
-       ned/editor/asmview, ned/core/secrets, ned/sys/landlock, ned/sys/heap, ned/app/releasecheck, ned/debug/clines, ned/ai/streamparts
+       ned/editor/asmview, ned/core/secrets, ned/sys/landlock, ned/sys/heap, ned/app/releasecheck, ned/core/sha256, ned/debug/clines, ned/ai/streamparts
 
 const
   Version = NedVersion
@@ -200,7 +200,9 @@ include ned/term/repltabs
 include ned/term/panel
 include ned/ai/assistant
 include ned/ai/mcp
+include ned/ai/mcphttp
 include ned/ai/agenttools
+include ned/ai/enginetools
 include ned/ai/requests
 include ned/ai/endpoints
 include ned/ai/inlineedit
@@ -358,4 +360,5 @@ include ned/nim/warmindex
 include ned/editor/bufforget
 when defined(nedMemProbe): include ned/app/memprobe_gen   # (tests/memory/memprobe.py: how big each table is)
 include ned/app/headless
+include ned/app/completions
 include ned/app/main

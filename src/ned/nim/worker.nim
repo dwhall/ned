@@ -160,6 +160,20 @@ proc wkStart(): bool =
   for b in bufs: b.wkLogFrom = -1
   true
 
+var
+  wkNifSeq = 0                      # (the editor) the last request for a big NIF's facts
+  wkNifWait: Table[int, proc(fx: NifFacts) {.closure.}]   # … what each request's facts go to
+
+proc wkNifFacts(path, nif: string, nim2: bool, alias: string, then: proc(fx: NifFacts) {.closure.}): bool =
+  ## (the editor) a big NIF's facts (nifFactsBuild), worked out by the worker: they go to `then` when they come —
+  ## false when there is no worker (they are not worked out then: a big NIF would hold up the keys)
+  if not wkOn() or not wkStart(): return false
+  inc wkNifSeq
+  if wkNifWait.len > 32: wkNifWait.clear()
+  wkNifWait[wkNifSeq] = then
+  wkSend(%*{"op": "niffacts", "rid": wkNifSeq, "path": path, "nif": nif, "nim2": nim2, "alias": alias})
+  true
+
 proc wkMacros(path: string) =
   ## (the editor) what a file's top-level macro calls make, from the compiler: the worker's engine knows it too — its
   ## checks, hints and counts (it once marked `cfg.getTitle` that `makeGetters(Config, title)` makes as no member)
@@ -460,6 +474,12 @@ proc wkAnswer(line: string) =
   of "hints": wkHintsAnswer(j)
   of "checks": wkChecksAnswer(j)
   of "refs": wkRefsAnswer(j)
+  of "niffacts":
+    let rid = j{"rid"}.getInt
+    let cb = wkNifWait.getOrDefault(rid)
+    if cb != nil:
+      wkNifWait.del rid
+      cb(nifFactsOfJson(j{"f"}))
   of "web": wkWebAnswer(j)
   of "cchecks":
     let b = bufById(j{"id"}.getInt)
@@ -550,7 +570,7 @@ proc wkReport(): string =
 # ── the worker itself (`ned --engine-worker`) ──
 
 type WkTask = object
-  kind: string                    # "hints" | "checks" | "refs" | "web"
+  kind: string                    # "hints" | "checks" | "refs" | "web" | "cchecks" | "niffacts" (its request in key)
   id, v: int
   key: string
   chunk: int
@@ -790,6 +810,7 @@ proc wkHandle(line: string) =
       if not (t.kind == "cchecks" and t.id == id): keep.add t
     wkTasks = keep
     wkTasks.add WkTask(kind: "cchecks", id: id, v: j{"v"}.getInt)
+  of "niffacts": wkTasks.add WkTask(kind: "niffacts", id: j{"rid"}.getInt, key: $j)
   of "web":
     var keep: seq[WkTask]
     for t in wkTasks:
@@ -997,6 +1018,12 @@ proc workerMain() =
       of "checks": wkRunChecks(t)
       of "refs": wkRunRefs(t)
       of "web": wkRunWeb(t)
+      of "niffacts":
+        # (a big NIF read in pieces, its facts sent back: the editor's keys never wait for it)
+        let j = parseJson(t.key)
+        let fx = nifFactsBuild(j{"path"}.getStr, j{"nif"}.getStr, j{"nim2"}.getBool, j{"alias"}.getStr)
+        wkWrite(%*{"op": "niffacts", "rid": t.id, "f": nifFactsJson(fx)})
+        heapTidy(0)
       of "cchecks":
         let b = wkDoc(t.id)
         if b != nil and b.changeId == t.v:

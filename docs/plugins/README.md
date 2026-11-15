@@ -401,6 +401,18 @@ aiToolReadOnly("line_count", "How many lines the file being edited has", %*{}) d
 [`aiTool`](api.md#aitool) · [`aiToolReadOnly`](api.md#aitoolreadonly) · cookbook:
 [tools for the assistant](cookbook.md#16-tools-for-the-assistant)
 
+And the other way: a plugin asks the assistant — your provider and model — and gets its answer in a callback (the
+"ai" permission):
+
+```nim
+permission("ai", "writes a one-line summary of the file")
+command("Summary: this file") do ():
+  askAi("One line on what this code does:\n" & current().text) do (answer, error: string):
+    toast(if error.len == 0: answer else: "no answer: " & error)
+```
+
+[`askAi`](api.md#askai)
+
 ### The clipboard
 
 What Ctrl+V would paste, and putting text there: with the "clipboard" permission.
@@ -461,16 +473,16 @@ and in its file — and the others start without it.
 Before a plugin runs, ned reads its source (every `.nims` and `.nim` file in its folder) for what it does beyond
 editing: **run programs** (`shell`, `shellAsync`, `runInTerminal`, a command of ned's that runs programs,
 NimScript's `exec` and `gorgeEx`, `osproc`), **change files** (`writeFile`, `mkDir`, `mvFile`, `rmFile`,
-`removeFile` …), **use the clipboard**, and, for a plugin in full Nim, **use the network** (`std/net`,
-`httpclient` …). A plugin says why it needs each one with `permission("shell", "sends your requests with curl")`
+`removeFile` …), **use the clipboard**, **ask the assistant** (`askAi`: what it sends goes to your AI provider,
+with your key), and, for a plugin in full Nim, **use the network** (`std/net`, `httpclient` …). A plugin says why it needs each one with `permission("shell", "sends your requests with curl")`
 — one line, two plain strings. The first time it would run — installed, copied in, or one of ned's own turned
 on — ned shows what it asks for, why, and where in its source, and runs it only after you *Allow*; until then
 the Plugins dock says it is waiting (a toast too, once). What you allowed is kept on this device only
 (`~/.local/state/ned/plugin-permissions.json`, never in synced settings); a plugin's menu in the dock and
 *Plugins: permissions…* show it and take it back. A plugin that later asks for more waits again.
 
-At run time a call the plugin was not allowed (`shell`, `shellAsync`, `runInTerminal`, the clipboard, a command
-of ned's that runs programs, saving a file outside the project) raises an error that names the permission, and
+At run time a call the plugin was not allowed (`shell`, `shellAsync`, `runInTerminal`, the clipboard, `askAi`, a
+command of ned's that runs programs, saving a file outside the project) raises an error that names the permission, and
 the plugin's log says *refused*; `allowed("shell")` asks first. Its own data folder needs no permission:
 `writeData(name, text)`, `appendData`, `readData`. Code ned cannot read ahead — `{.importc.}`, `{.emit.}`, `asm`,
 macros that make code from text, a module from outside the plugin's folder — counts as asking for everything.

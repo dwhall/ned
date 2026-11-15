@@ -2,15 +2,17 @@
 #    and set the clipboard. ned reads a plugin's source before it runs it (what it uses, and what it says it needs
 #    and why), asks you once, and refuses at run time what was not allowed ──
 
-type PlugPerm = enum ppShell = "shell", ppNetwork = "network", ppFiles = "files", ppClipboard = "clipboard"
+type PlugPerm = enum ppShell = "shell", ppNetwork = "network", ppFiles = "files", ppClipboard = "clipboard", ppAi = "ai"
 
 const
   PlugPermWhat: array[PlugPerm, string] = [
     "run programs (a program can do anything you can, the network too)",
     "use the network",
     "change files — write, move or delete them (not only its own data)",
-    "read and set the clipboard"]
-  PlugPermShort: array[PlugPerm, string] = ["run programs", "use the network", "change files", "use the clipboard"]
+    "read and set the clipboard",
+    "ask the assistant — what it sends goes to your AI provider, with your key (secrets taken out)"]
+  PlugPermShort: array[PlugPerm, string] = ["run programs", "use the network", "change files", "use the clipboard",
+                                            "ask the assistant"]
 
 func plugIdentNorm(s: string): string =
   ## a Nim name as Nim compares them: the first letter as it is, the rest without case or underscores
@@ -34,6 +36,7 @@ const
                    "delenv", "createsymlink", "createhardlink", "fmwrite", "fmappend", "fmreadwrite",
                    "fmreadwriteexisting", "tryremovefile", "setcurrentdir"]
   PlugUsesClip = ["clipboard", "setclipboard"]
+  PlugUsesAi = ["askai"]
   # what makes code ned cannot read before it runs (names from text, foreign code), or reaches past the plugin
   # library to the host: taken as asking for everything
   PlugUsesAll = ["asm", "curPlugin", "curplugin"]
@@ -204,6 +207,7 @@ proc plugScanText(name, text: string, sc: var PlugScan) =
     elif nw in PlugUsesNet: mark(ppNetwork, w, l)
     elif nw in PlugUsesFiles: mark(ppFiles, w, l)
     elif nw in PlugUsesClip: mark(ppClipboard, w, l)
+    elif nw in PlugUsesAi: mark(ppAi, w, l)
     elif nw in PlugUsesAll or w in PlugUsesAll or (importsMacros and nw in PlugUsesAllMacros):
       for p in PlugPerm: mark(p, w, l)
   # a module named by a path: outside the plugin's folder, ned has not read it

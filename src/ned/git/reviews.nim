@@ -184,3 +184,45 @@ proc cmdReviewComments() =
                       t.rel & (if t.line >= 0: ":" & $(t.line + 1) else: "") & (if t.outdated: " · outdated" else: ""),
                       threadAct(t))
     openActions("Pull request #" & $reviewPr & " — review comments", items))
+
+proc cmdReviewCommentHere() =
+  ## Git: comment on this line in the pull request… — a review comment on the cursor's line, or the selected lines, of
+  ## this branch's pull request, posted at once (gh api; GitHub takes it only on lines the pull request changes)
+  let b = buf()
+  let root = gitHome()
+  if root.len == 0 or b.path.len == 0 or not b.path.startsWith(root & "/"):
+    info("Comment on this line: in a file of the repository")
+    return
+  if b.dirty:
+    info("Save the file (and push it) first: the comment goes on the pull request's version of the line")
+    return
+  let rel = b.path[root.len + 1 .. ^1]
+  let c = b.primary
+  let (a, e) = if c.hasSel: (min(c.anchor.line, c.head.line), max(c.anchor.line, c.head.line)) else: (c.head.line, c.head.line)
+  reviewsLoad(root, quiet = false, proc() =
+    let (owner, name) = reviewRepo
+    let n = reviewPr
+    askText("Comment on " & rel & ":" & $(a + 1) & (if e > a: "-" & $(e + 1) else: "") & " (pull request #" & $n & "):",
+            "", proc(body: string) =
+      if body.strip.len == 0: return
+      discard startJob(jkTool, "gh pr view " & $n & " --json headRefOid 2>/dev/null", root, proc(j: Job) =
+        var sha = ""
+        try: sha = parseJson(j.output){"headRefOid"}.getStr
+        except CatchableError: discard
+        if sha.len == 0:
+          error("gh could not tell the pull request's last commit")
+          return
+        var cmd = "gh api " & quoteShell("repos/" & owner & "/" & name & "/pulls/" & $n & "/comments") & " -f body=" &
+                  quoteShell(body.strip) & " -f commit_id=" & sha & " -f path=" & quoteShell(rel) & " -F line=" &
+                  $(e + 1) & " -f side=RIGHT"
+        if e > a: cmd.add " -F start_line=" & $(a + 1) & " -f start_side=RIGHT"
+        discard startJob(jkTool, cmd & " 2>&1", root, proc(j2: Job) =
+          if j2.code == 0:
+            info("Commented on " & rel & ":" & $(e + 1))
+            reviewsLoad(root, quiet = true)
+          else:
+            var why = j2.output.strip
+            try: why = parseJson(j2.output){"message"}.getStr(why)
+            except CatchableError: discard
+            error("GitHub did not take the comment (only lines the pull request changes can have one): " &
+                  truncTo(why, 120))))))

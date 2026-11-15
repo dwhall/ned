@@ -64,9 +64,13 @@ proc nifPlace(n: var NifNode, r: NifInfo, parent: NifNode, hasParent: bool) =
     (n.file, n.sline, n.scol) = (parent.file, parent.sline + r.nums[1], parent.scol + r.nums[0])
   else: (n.sline, n.scol) = (r.nums[1] - 1, r.nums[0])
 
-proc nifParse*(lines: openArray[string], before = false): seq[NifNode] =
+proc nifParse*(lines: openArray[string], before = false, chunk = 0,
+               onChunk: proc(nodes: seq[NifNode]) {.closure.} = nil): seq[NifNode] =
   ## every node and atom of a NIF text, in order. Nimony writes a token's line information right after it; Nim 2.4's
-  ## `nim nif` writes it after the token before (after a `)` too) — `before` reads it that way
+  ## `nim nif` writes it after the token before (after a `)` too) — `before` reads it that way. With `onChunk`, a big
+  ## text is handed over in pieces instead (and nothing returned): each time a statement of the module, or of a file
+  ## it includes, has ended and `chunk` nodes or more are waiting, they go to onChunk with the statements around them
+  ## first (still open: their places, their tags) — a NIF of 20 MB is read in the memory of its biggest statement
   var stack: seq[int]
   var l = 0
   var c = 0
@@ -115,6 +119,17 @@ proc nifParse*(lines: openArray[string], before = false): seq[NifNode] =
       inc c
       let r = nifReadInfo(s, c)          # (Nim 2.4's: the next token's place)
       if before: pending = r
+      if onChunk != nil and stack.len <= 2 and result.len >= chunk:
+        # (a statement at the top, or at the top of an included file, has ended: what came so far goes, the open
+        #  statements around it stay — at the start, their parents renumbered)
+        onChunk(result)
+        var kept: seq[NifNode]
+        for k, si in stack:
+          var n = result[si]
+          n.parent = k - 1
+          kept.add n
+          stack[k] = k
+        result = kept
     else:
       var n = NifNode(line: l, col: c, depth: stack.len, parent: parentI)
       if ch == '"' or ch == '\'':
@@ -142,6 +157,9 @@ proc nifParse*(lines: openArray[string], before = false): seq[NifNode] =
     if result[i].tag.len > 0 and result[i].eline < result[i].line:
       result[i].eline = lines.high                           # (never closed)
       result[i].ecol = if lines.len > 0: lines[^1].len else: 0
+  if onChunk != nil:
+    if result.len > 0: onChunk(result)
+    result.setLen(0)
 
 func nifSymName*(atom: string): string =
   ## a symbol's name as written in Nim: `SortOrder.0.sysvq0asl` → SortOrder, `` dollar`.SortOrder.0. `` → `$`

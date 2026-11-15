@@ -12,7 +12,11 @@ proc nifCacheBase(): string =
   ## where ned keeps the NIF of the projects it checked (~/.cache/ned/nif), out of the projects themselves
   getEnv("XDG_CACHE_HOME", getHomeDir() / ".cache") / AppName / "nif"
 
-const NifReadMax = 3_000_000           # (bytes: a bigger NIF is not read as a tree — its nodes take ~25 times its size)
+const
+  NifReadMax = 3_000_000               # (bytes: a bigger NIF is read in the engine worker — its nodes take ~25 times
+                                       #  its size, and reading it would hold up the keys)
+  NifBigMax = 64_000_000               # (… and in pieces, of NifChunk nodes or more: one bigger is not read at all)
+  NifChunk = 20_000
 
 var nim2NifDirs: seq[string]          # the NIF folders checked in this session, the latest first
 
@@ -212,12 +216,14 @@ var nifTyping: Table[string, NifFacts]       # file → the facts of the unsaved
 proc nifFactsBuild(path, nif: string, nim2: bool, alias = ""): NifFacts =
   ## reads a file's NIF: the colour of each name on each line (by this module's declarations, and the other modules'
   ## from their NIF), the types of the lets and vars, which symbol each name is, where this module declares each.
-  ## `alias`: the file the NIF names in place of this one (a typing check's text read from stdin, or its copy)
+  ## `alias`: the file the NIF names in place of this one (a typing check's text read from stdin, or its copy). A NIF
+  ## over NifReadMax is read in pieces (nifParse's chunks): in the engine worker, where it takes its time
   result = NifFacts()
-  var nodes: seq[NifNode]
+  let fx = result
+  var text: seq[string]
   try:
-    if getFileSize(nif) > NifReadMax: return
-    nodes = nifParse(readFile(nif).splitLines, before = nim2)
+    if getFileSize(nif) > NifBigMax: return
+    text = readFile(nif).splitLines
   except CatchableError: return
   let mainDir = if nim2: (try: parentDir(readFile(parentDir(nif) / "main.txt").strip) except CatchableError: "")
                 else: ""
@@ -235,28 +241,41 @@ proc nifFactsBuild(path, nif: string, nim2: bool, alias = ""): NifFacts =
     let p = if f.isAbsolute: f elif nim2: normalizedPath(mainDir / f) else: nifSourcePath(nif, f)
     result = p == path or (p.len > 0 and path.endsWith("/" & f) and not nim2)
     sameFile[f] = result
-  # this module's declarations: their tag, and whether at the top
-  var own: Table[string, TokKind]
-  for i, n in nodes:
-    if not n.isDef or n.parent < 0: continue
-    let d = nodes[n.parent]
-    let top = d.parent >= 0 and nodes[d.parent].tag == "stmts" and nodes[d.parent].depth == 0
-    let k = nifTagKind(d.tag, top)
-    own[n.atom] = k
-    if here(n.file) and n.sline >= 0: result.defs[n.atom] = (path, n.sline, n.scol)
-    # a let or var: its type (the fourth thing in it)
-    if d.tag in ["let", "var", "glet", "gvar", "tlet", "tvar"] and here(n.file) and n.sline >= 0:
-      var kids: seq[int]
-      for j in n.parent + 1 ..< min(nodes.len, n.parent + 4000):
-        if nodes[j].depth <= d.depth: break
-        if nodes[j].parent == n.parent: kids.add j
-        if kids.len > 3: break
-      if kids.len > 3 and kids[0] == i:
-        let t = nifTypeText(nodes, kids[3], not nim2)
-        if t.len > 0:
-          result.hints.mgetOrPut(n.sline, @[]).add (nifSymName(n.atom), t)
-          result.defTypes[n.atom] = t
-  # the other modules' declarations, for the symbols used here
+  var own: Table[string, TokKind]      # this module's declarations: their colour
+  var used: seq[(int, string, string)] # (a line of this file, a name there as Nim compares it, the symbol it is)
+  proc take(nodes: seq[NifNode]) =
+    ## one piece of the NIF: its declarations (their tag, whether at the top; this file's: where, and a let's or
+    ## var's type) and the names this file uses in it
+    for i, n in nodes:
+      if not n.isDef or n.parent < 0: continue
+      let d = nodes[n.parent]
+      let top = d.parent >= 0 and nodes[d.parent].tag == "stmts" and nodes[d.parent].depth == 0
+      let k = nifTagKind(d.tag, top)
+      own[n.atom] = k
+      if here(n.file) and n.sline >= 0: fx.defs[n.atom] = (path, n.sline, n.scol)
+      # a let or var: its type (the fourth thing in it)
+      if d.tag in ["let", "var", "glet", "gvar", "tlet", "tvar"] and here(n.file) and n.sline >= 0:
+        var kids: seq[int]
+        for j in n.parent + 1 ..< min(nodes.len, n.parent + 4000):
+          if nodes[j].depth <= d.depth: break
+          if nodes[j].parent == n.parent: kids.add j
+          if kids.len > 3: break
+        if kids.len > 3 and kids[0] == i:
+          let t = nifTypeText(nodes, kids[3], not nim2)
+          if t.len > 0:
+            fx.hints.mgetOrPut(n.sline, @[]).add (nifSymName(n.atom), t)
+            fx.defTypes[n.atom] = t
+    for n in nodes:
+      if n.tag.len > 0 or n.atom.len == 0 or n.sline < 0 or '.' notin n.atom: continue
+      let name = nifSymName(n.atom)
+      if name.len == 0 or name[0] notin IdentStartChars or '`' in n.atom or not here(n.file): continue
+      let w = nxNorm(name)
+      # (a declaration too: hover on `let x` has its type, and the n-th `x` of `let x = x + 1` is the n-th here)
+      fx.uses.mgetOrPut(n.sline, @[]).add (w, n.atom, n.scol)
+      used.add (n.sline, w, n.atom)
+  discard nifParse(text, before = nim2, chunk = NifChunk, onChunk = take)
+  text.setLen(0)
+  # the colours, now that every declaration of the module is known: its own, else by the NIF of the module it is from
   var foreign: Table[string, Table[string, string]]
   proc kindOf(sym: string): TokKind =
     ## a symbol's colour: declared here, else by the NIF of its module
@@ -268,18 +287,47 @@ proc nifFactsBuild(path, nif: string, nim2: bool, alias = ""): NifFacts =
       foreign[m] = if f.len > 0: nifDecls(f) else: initTable[string, string]()
     let tag = foreign[m].getOrDefault(sym)
     if tag.len == 0: tkText else: nifTagKind(tag, true)
-  for n in nodes:
-    if n.tag.len > 0 or n.atom.len == 0 or n.sline < 0 or '.' notin n.atom: continue
-    let name = nifSymName(n.atom)
-    if name.len == 0 or name[0] notin IdentStartChars or '`' in n.atom or not here(n.file): continue
-    let w = nxNorm(name)
-    # (a declaration too: hover on `let x` has its type, and the n-th `x` of `let x = x + 1` is the n-th here)
-    result.uses.mgetOrPut(n.sline, @[]).add (w, n.atom, n.scol)
-    let k = kindOf(n.atom)
-    let row = addr result.kinds.mgetOrPut(n.sline, initTable[string, TokKind]())
+  for (line, w, atom) in used:
+    let k = kindOf(atom)
+    let row = addr fx.kinds.mgetOrPut(line, initTable[string, TokKind]())
     row[].withValue(w, old):
       if old[] != k: old[] = tkText                 # (two things of one name on a line: neither colour)
     do: row[][w] = k
+
+proc nifFactsJson(fx: NifFacts): JsonNode =
+  ## the facts as JSON, from the engine worker to the editor (what the editor shows: kinds, hints, uses, defs, types)
+  var kinds, hints, uses, defs, types = newJArray()
+  for l, row in fx.kinds:
+    for w, k in row: kinds.add %*[l, w, ord(k)]
+  for l, hs in fx.hints:
+    for (n, ty) in hs: hints.add %*[l, n, ty]
+  for l, us in fx.uses:
+    for (w, sym, c) in us: uses.add %*[l, w, sym, c]
+  for sym, (f, l, c) in fx.defs: defs.add %*[sym, f, l, c]
+  for sym, ty in fx.defTypes: types.add %*[sym, ty]
+  %*{"kinds": kinds, "hints": hints, "uses": uses, "defs": defs, "types": types}
+
+proc nifFactsOfJson(j: JsonNode): NifFacts =
+  ## the facts again from nifFactsJson's JSON (nothing that is not one of them)
+  result = NifFacts()
+  try:
+    for x in jitems(j{"kinds"}):
+      let k = x[2].getInt
+      if k >= ord(low(TokKind)) and k <= ord(high(TokKind)):
+        result.kinds.mgetOrPut(x[0].getInt, initTable[string, TokKind]())[x[1].getStr] = TokKind(k)
+    for x in jitems(j{"hints"}): result.hints.mgetOrPut(x[0].getInt, @[]).add (x[1].getStr, x[2].getStr)
+    for x in jitems(j{"uses"}): result.uses.mgetOrPut(x[0].getInt, @[]).add (x[1].getStr, x[2].getStr, x[3].getInt)
+    for x in jitems(j{"defs"}): result.defs[x[0].getStr] = (x[1].getStr, x[2].getInt, x[3].getInt)
+    for x in jitems(j{"types"}): result.defTypes[x[0].getStr] = x[1].getStr
+  except CatchableError, Defect: discard
+
+proc wkNifFacts(path, nif: string, nim2: bool, alias: string, then: proc(fx: NifFacts) {.closure.}): bool
+
+var nifAsked: HashSet[string]          # (big NIFs whose facts the worker is working out: not asked again meanwhile)
+
+proc nifBig(nif: string): bool =
+  ## a NIF too big to read in the editor: the worker reads it (nifFactsBuild's pieces)
+  try: getFileSize(nif) > NifReadMax except CatchableError: false
 
 proc nifFactsFor(b: Buffer): NifFacts =
   ## the compiler's facts about the buffer's file: of the file as saved, when the NIF was made after the save (Nim
@@ -309,6 +357,19 @@ proc nifFactsFor(b: Buffer): NifFacts =
     old.stamp = st
     return old
   if nifFactsMemo.len > 32: nifFactsMemo.clear()
+  if nifBig(nif):
+    # (a module of many includes, or a huge one: the worker reads it, and its facts are here when they come)
+    let key = b.path & "|" & nif & "|" & $t.toUnixFloat
+    if key notin nifAsked:
+      if nifAsked.len > 64: nifAsked.clear()
+      nifAsked.incl key
+      let path = b.path
+      if not wkNifFacts(path, nif, not nim3, "", proc(fx: NifFacts) =
+           nifAsked.excl key
+           (fx.stamp, fx.nif, fx.nifTime) = (st, nif, t)
+           nifFactsMemo[path] = fx
+           needRender = true): nifAsked.excl key
+    return nifTyping.getOrDefault(b.path)
   result = nifFactsBuild(b.path, nif, not nim3)
   (result.stamp, result.nif, result.nifTime) = (st, nif, t)
   nifFactsMemo[b.path] = result
@@ -691,10 +752,16 @@ proc nifTypingKeep(b: Buffer, nif: string, nim2: bool, alias: string) =
   var t: times.Time
   try: t = getLastModificationTime(nif)
   except CatchableError: return
-  let fx = nifFactsBuild(b.path, nif, nim2, alias)
-  (fx.nif, fx.nifTime, fx.changeId, fx.alias) = (nif, t, b.changeId, alias)
-  fx.lineHash = newSeq[Hash](b.lines.len)
-  for i, l in b.lines: fx.lineHash[i] = hash(l)
-  if nifTyping.len >= 8 and b.path notin nifTyping: nifTyping.clear()
-  nifTyping[b.path] = fx
-  needRender = true
+  var hs = newSeq[Hash](b.lines.len)
+  for i, l in b.lines: hs[i] = hash(l)
+  let (path, ch) = (b.path, b.changeId)
+  proc keep(fx: NifFacts) =
+    ## the facts of that text, kept for the buffer
+    (fx.nif, fx.nifTime, fx.changeId, fx.alias, fx.lineHash) = (nif, t, ch, alias, hs)
+    if nifTyping.len >= 8 and path notin nifTyping: nifTyping.clear()
+    nifTyping[path] = fx
+    needRender = true
+  if nifBig(nif):
+    discard wkNifFacts(path, nif, nim2, alias, keep)      # (big: the worker reads it — none without a worker)
+    return
+  keep(nifFactsBuild(path, nif, nim2, alias))

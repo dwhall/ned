@@ -171,6 +171,7 @@ proc handleMouse(k: Key) =
     return
   mouseX = x
   mouseY = y
+  mouseCtrl = mCtrl in k.mods
   mouseMovedAt = getMonoTime()
   if splitOn and not k.drag and not menuOpen() and not dialogOpen() and pickKind == pickNone and not helpOpen:
     let pi = paneAt(x, y)

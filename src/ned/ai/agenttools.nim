@@ -379,6 +379,36 @@ proc finishCall(mi, ci: int, res: string, isErr: bool) =
   inc aiVersion
   needRender = true
 
+proc aiSandboxed(cmd: string): (string, string) =
+  ## a command of the assistant's (its run_command, an ACP agent's terminal) inside ned's sandbox, ai.sandbox (Linux's
+  ## Landlock): it reads the system, Nim and the project, changes files only in the project, the caches and a
+  ## temporary folder of its own, has no network ("net": it may), and gets none of the environment's secrets — the
+  ## shell command to run, and what to tell the model when the command fails there ("" for nothing: off, or no
+  ## Landlock, where commands run as before)
+  let mode = sStr("ai.sandbox")
+  if mode == "off" or landlockAbi() == 0: return (cmd, "")
+  var p = SandboxPolicy(listAll: true, net: mode == "net")
+  p.read.add sandboxToolReads()
+  let home = getHomeDir().strip(leading = false, chars = {'/'})
+  let r = rootDir.strip(leading = false, chars = {'/'})
+  let priv = privDir().strip(leading = false, chars = {'/'})
+  # (the project — not when it is your home folder or holds ned's private folder, as for plugins)
+  if r.len > 0 and home != r and not home.startsWith(r & "/") and priv != r and not priv.startsWith(r & "/"):
+    p.write.add rootDir
+  else: p.read.add rootDir
+  let tmp = privDir() / "agent-tmp"
+  try: createDir(tmp)
+  except CatchableError: discard
+  p.write.add [tmp, getEnv("XDG_CACHE_HOME", getHomeDir() / ".cache")]
+  var line = "TMPDIR=" & quoteShell(tmp) & " " & quoteShell(getAppFilename()) & " --sandbox --quiet"
+  for x in sandboxArgs(p): line.add " " & quoteShell(x)
+  line.add " -- sh -c " & quoteShell(cmd)
+  (line, "(it ran in ned's sandbox, ai.sandbox: it may change files only in the project and the caches" &
+         (if p.net: "" else: ", with no network") & ", and has none of the environment's secrets — if it needs " &
+         "more, tell the user, who can allow it)")
+
+proc engineTool(name: string, j: JsonNode): (string, bool)
+
 proc runCall(mi, ci: int) =
   ## runs one tool call of a message: a call that changes anything is refused in the planning step and a file edit
   ## outside the project is not allowed; the file tools answer at once, run_command is a job (on the server for a remote
@@ -407,6 +437,9 @@ proc runCall(mi, ci: int) =
   of "edit_file": (let (r, e) = toolEditFile(j); finishCall(mi, ci, r, e))
   of "write_file": (let (r, e) = toolWriteFile(j); finishCall(mi, ci, r, e))
   of "get_diagnostics": (let (r, e) = toolDiagnostics(j); finishCall(mi, ci, r, e))
+  of "nim_definition", "nim_references", "nim_type", "nim_routines_by_signature", "nim_outline":
+    let (r, e) = engineTool(c.name, j)
+    finishCall(mi, ci, r, e)
   of "run_command":
     let cmd = j{"command"}.getStr
     let cwd = if j{"cwd"}.getStr.len > 0: absProjectPath(j{"cwd"}.getStr) else: rootDir
@@ -419,7 +452,8 @@ proc runCall(mi, ci: int) =
     # a remote folder: on the server (once the saves are there); what it changes there comes back before the
     # assistant reads on
     let ri = if remotes.len > 0: remoteOf(cwd) else: -1
-    let run = if ri >= 0: remoteWaitPushes() & remoteCommand(remotes[ri], cmd, cwd) & " 2>&1" else: cmd
+    let (boxed, boxNote) = if ri >= 0: (cmd, "") else: aiSandboxed(cmd)
+    let run = if ri >= 0: remoteWaitPushes() & remoteCommand(remotes[ri], cmd, cwd) & " 2>&1" else: boxed
     let where = if ri >= 0: " (on " & remotes[ri].host & ")" else: ""
     var inline = true
     proc start() =
@@ -428,7 +462,8 @@ proc runCall(mi, ci: int) =
       aiCmdJob = startJob(jkTool, run, cwd, proc(jb: Job) =
         aiCmdJob = nil
         let o = stripAnsi(jb.output)
-        finishCall(m, k, "exit code " & $jb.code & where & "\n" & o, jb.code != 0)
+        finishCall(m, k, "exit code " & $jb.code & where & "\n" & o & (if jb.code != 0 and boxNote.len > 0: "\n" & boxNote else: ""),
+                   jb.code != 0)
         if ri >= 0 and ri < remotes.len: remoteSync(ri, proc() = aiContinue())
         else: aiContinue())
       if aiCmdJob == nil:

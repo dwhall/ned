@@ -210,5 +210,14 @@ definition at every use (`--min`), and the type hint of every `let` and `var` wr
 (`--min-types`; the NIF's types as ned itself reads them: the driver's `nifhints`). The *grader* job runs it on
 `nedfmt.nim`, `index.nim` and `nedls.nim`; it lists the places that differ — the engine's to-do list.
 
+**A big NIF** (over `NifReadMax`, 3 MB: `index.nim`'s is 4.3 MB, ned's own module with its includes 23 MB) is not
+read in the editor — its nodes would take twenty times the file, and the keys would wait. `nifFactsFor` and the
+typing check hand it to the engine worker (`wkNifFacts` → the worker's `niffacts` task), which reads it with
+`nifParse`'s chunks — the nodes handed over each time a statement at the top, or at the top of an included file,
+ends, the statements still open first in each piece — and sends the facts back as JSON (`nifFactsJson`). The
+colours of the names are worked out at the end, once every declaration of the module is known. The 23 MB NIF:
+about half a second here, 119 MB at most, against more than 400 MB as one tree. The grader reads them the same way,
+so `index.nim` (1,000 lets and vars) and `nedls.nim` — which includes all of ned: 4,231 — are graded in full.
+
 The longer comparisons — the whole standard library, nimble packages and the compiler — and the numbers behind the
 README's *How good it is* are described in [tests/engine/README.md](../../tests/engine/README.md).

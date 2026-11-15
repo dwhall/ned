@@ -93,6 +93,7 @@ proc initCommands() =
   add("Suspend ned (fg brings it back)", "Ctrl+Z with the vim, helix and emacs keys", suspendNed())
   add("Toggle file tree", "", toggleTree())
   add("Nim: exports nothing uses…", "", cmdUnusedExports())
+  add("Nim: build for another system…", "Windows, macOS, Linux or Android, with zig as the C compiler", cmdCrossBuild())
   add("Nim: find a routine by its signature…", "what it takes and gives: (string, char) -> seq[string] finds split",
       cmdFindBySignature())
   add("Nim: change signature…", "", cmdChangeSignature())
@@ -619,6 +620,10 @@ proc initCommands() =
   add("Git: GitHub issues…", "", ghIssues())
   add("Git: GitHub Actions (CI)…", "", ghRuns())
   add("Git: GitHub review comments…", "the pull request's, on their lines", cmdReviewComments())
+  add("Git: comment on this line in the pull request…", "a review comment on the line, or the selected lines",
+      cmdReviewCommentHere())
+  add("Git: make a GitHub release…", "a tag, its notes, files with their SHA-256 — signed with git.releaseKey",
+      cmdGhRelease())
   add("File: open folder by path…", "", openPrompt(pOpenFolder, "Open folder", rootDir & "/"))
   add("Cut", "Ctrl+X", copySel(true))
   add("Copy", "Ctrl+C", copySel(false))

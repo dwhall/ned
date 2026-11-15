@@ -171,10 +171,19 @@ proc mcpReadErr(s: McpServer) =
     if s.errTail.len > 60: s.errTail = s.errTail[^40 .. ^1]
 
 proc mcpStart(name: string, spec: JsonNode) =
-  ## {"command": ["npx", "-y", "pkg"]} or {"command": "npx", "args": [...]} (Claude Desktop's form), "env": {…}
+  ## {"command": ["npx", "-y", "pkg"]} or {"command": "npx", "args": [...]} (Claude Desktop's form), "env": {…} — or a
+  ## server on the web: {"url": "https://…", "headers": {"Authorization": "Bearer ${TOKEN}"}}, through ned's own
+  ## bridge (ned --mcp-http: ai/mcphttp)
   var cmd: seq[string]
+  var spec = spec
   let c = spec{"command"}
-  if c != nil and c.kind == JString:
+  if spec{"url"}.getStr.len > 0:
+    cmd = @[getAppFilename(), "--mcp-http", spec{"url"}.getStr]
+    spec = spec.copy
+    if spec{"env"} == nil or spec{"env"}.kind != JObject: spec["env"] = newJObject()
+    spec["env"]["NED_MCP_HEADERS"] = %($(if spec{"headers"} != nil and spec{"headers"}.kind == JObject: spec["headers"]
+                                        else: newJObject()))
+  elif c != nil and c.kind == JString:
     cmd = @[c.getStr]
     for a in jitems(spec{"args"}): cmd.add a.getStr
   else:

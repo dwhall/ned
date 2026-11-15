@@ -149,6 +149,15 @@ class H(BaseHTTPRequestHandler):
                 n = (t.get('function') or t).get('name', '')
                 if n.endswith('__read_resource'): mcp_name = n
             mcp_args = '{"uri": "note://greeting"}'
+        # (6.51: the engine's tools and the sandbox — a tool call the prompt names)
+        if 'ZQOUTLINE' in user and not has_tool_result(msgs):
+            for t in b.get('tools') or []:
+                n = (t.get('function') or t).get('name', '')
+                if n == 'nim_outline': mcp_name = n
+            mcp_args = '{"path": "src/demo/utils.nim"}'
+        if 'ZQSANDBOX' in user and not has_tool_result(msgs):
+            mcp_name = 'run_command'
+            mcp_args = json.dumps({'command': 'echo inside > zq-inside.txt; touch "$HOME/zq-outside.txt"; echo ran-zq'})
         if m == 'empty-model':
             text, finish = '', 'length'
         elif has_tool_result(msgs):

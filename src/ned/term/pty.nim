@@ -103,6 +103,10 @@ type
     cmds: seq[TermCmd]       # commands seen through shell integration
     navCmd: int              # the command Ctrl+↑/↓ went to (-1: none)
     integrated: bool         # the shell sends OSC 133 marks
+    cwd: string              # (6.51) the folder the shell said it is in (OSC 7): "" none said
+    cmdLine: string          # … the command line it said it runs (OSC 633;E), for the next C
+    enterRow: int            # (a shell that marks only its prompts — sh, cmd.exe —: where Enter was sent, -1 none
+    enterAt: MonoTime        #  since the prompt, and when: where its command starts)
     hosted: bool             # terminal.keepRunning: the shell is a term host's (see termhost), fd its socket
     hostId: string
     inBuf: string            # … what came from it, not yet a whole message

@@ -4,7 +4,7 @@
 proc blankTerm(w, h: int): Term =
   ## a terminal with nothing in it yet (and no shell)
   result = Term(w: max(10, w), h: max(2, h), fd: -1, autoWrap: true, cursorVisible: true, fg: NoColor, bg: NoColor,
-                navCmd: -1)
+                navCmd: -1, enterRow: -1)
   result.top = 0
   result.bot = result.h - 1
   for _ in 0 ..< result.h: result.scr.add result.blankRow
@@ -432,6 +432,8 @@ proc osc133(t: Term, arg: string) =
   let g = t.gRow
   case arg[0]
   of 'A':
+    t.enterRow = -1
+    t.cmdLine = ""
     if t.cmds.len > 0 and not t.cmds[^1].ran:
       t.cmds[^1].promptRow = g                  # an empty Enter: the same command, a new prompt
       t.cmds[^1].inputRow = -1
@@ -447,9 +449,6 @@ proc osc133(t: Term, arg: string) =
   of 'C':
     if t.cmds.len > 0 and not t.cmds[^1].ran:
       var c = addr t.cmds[^1]
-      c.ran = true
-      c.outRow = g
-      c.started = getMonoTime()
       # the command line as typed: from where the prompt ended to the line Enter left
       let first = if c.inputRow >= 0: c.inputRow else: c.promptRow
       var txt = ""
@@ -458,13 +457,76 @@ proc osc133(t: Term, arg: string) =
         let part = rowText(row, (if r == first and c.inputRow >= 0: c.inputCol else: 0))
         if txt.len > 0: txt.add (if row.len > 0 and row[^1].ch notin [0'u32, 32'u32]: "" else: "\n")
         txt.add part
-      c.text = txt.strip
+      let line = if t.cmdLine.len > 0: t.cmdLine else: txt.strip
+      if line.len == 0 and c.inputRow >= 0: return     # (an empty Enter a shell marks as a command: none)
+      c.ran = true
+      c.outRow = g
+      c.started = getMonoTime()
+      c.text = line
   of 'D':
+    if t.cmds.len > 0 and not t.cmds[^1].ran and t.enterRow >= 0:
+      # (a shell that marks only its prompts: the command ran from the Enter sent after this prompt, and is what was
+      #  typed after it — unless nothing was, an empty Enter)
+      let c = addr t.cmds[^1]
+      let first = if c.inputRow >= 0: c.inputRow else: c.promptRow
+      var txt = ""
+      for r in first .. max(first, t.enterRow):
+        let part = rowText(t.rowByGlobal(r), (if r == first and c.inputRow >= 0: c.inputCol else: 0))
+        txt.add (if txt.len > 0: "\n" else: "") & part
+      if txt.strip.len > 0:
+        c.ran = true
+        c.outRow = t.enterRow + 1
+        c.started = t.enterAt
+        c.text = txt.strip
+      t.enterRow = -1
     if t.cmds.len > 0 and t.cmds[^1].ran and t.cmds[^1].endRow < 0:
       let semi = arg.find(';')
       t.cmds[^1].code = if semi > 0: (try: parseInt(arg[semi + 1 .. ^1].strip) except ValueError: -1) else: -1
       t.cmds[^1].endRow = g
       t.cmds[^1].ended = getMonoTime()
+  else: discard
+
+proc thisHost(): string =
+  ## this machine's name, as a shell writes it in OSC 7
+  when defined(windows): getEnv("COMPUTERNAME")
+  else:
+    var b: array[256, char]
+    if gethostname(cast[cstring](addr b[0]), 255) == 0: $cast[cstring](addr b[0]) else: ""
+
+proc oscCwd(t: Term, uri: string) =
+  ## OSC 7: the folder the shell is in (file://host/path) — kept when it is on this machine
+  if not uri.startsWith("file://"): return
+  let rest = uri[7 .. ^1]
+  let slash = rest.find('/')
+  if slash < 0: return
+  let host = rest[0 ..< slash]
+  if host.len > 0 and cmpIgnoreCase(host, "localhost") != 0 and cmpIgnoreCase(host, thisHost()) != 0:
+    return                                       # (an ssh session's: not a folder here)
+  var p = ""
+  var i = slash
+  while i < rest.len:
+    if rest[i] == '%' and i + 2 < rest.len and rest[i + 1] in HexDigits and rest[i + 2] in HexDigits:
+      p.add char(parseHexInt(rest[i + 1 .. i + 2]))
+      i += 3
+    else:
+      p.add rest[i]
+      inc i
+  t.cwd = p
+
+proc osc633(t: Term, arg: string) =
+  ## VS Code's marks (OSC 633), which some shells and prompts send: A–D as OSC 133's, E the command line, P;Cwd= the
+  ## folder
+  if arg.len == 0: return
+  case arg[0]
+  of 'A', 'B', 'C', 'D': t.osc133(arg)
+  of 'E':
+    # (the command line, with \\ for \ and \x3b for ;, then a nonce)
+    var s = if arg.len > 2: arg[2 .. ^1] else: ""
+    let semi = s.find(';')
+    if semi >= 0: s.setLen(semi)
+    t.cmdLine = s.multiReplace(("\\x3b", ";"), ("\\x3B", ";"), ("\\\\", "\\")).strip
+  of 'P':
+    if arg.startsWith("P;Cwd="): t.cwd = arg[6 .. ^1]
   else: discard
 
 proc feed(t: Term, data: string) =
@@ -571,6 +633,8 @@ proc feed(t: Term, data: string) =
         let semi = o.find(';')
         if semi > 0 and o[0 ..< semi] in ["0", "2"]: t.title = o[semi + 1 .. ^1]
         elif o.startsWith("133;"): t.osc133(o[4 .. ^1])
+        elif o.startsWith("633;"): t.osc633(o[4 .. ^1])
+        elif o.startsWith("7;"): t.oscCwd(o[2 .. ^1])
         t.st = psGround
       elif t.osc.len < 4096: t.osc.add c
     of psStr:
@@ -589,6 +653,16 @@ proc termWrite(t: Term, s: string) =
   ## sends keystrokes or pasted text to the shell: through the term host for a kept terminal, else straight to the
   ## pseudo-terminal, retrying briefly when it is full
   if t.fd < 0 or t.dead or s.len == 0: return
+  if t.integrated and not t.altActive and t.cmds.len > 0 and not t.cmds[^1].ran:
+    # (for a shell that marks only its prompts: the command line starts where the first key after the prompt went,
+    #  and runs from the Enter — a pasted text's line breaks are not one)
+    let c = addr t.cmds[^1]
+    if c.inputRow < 0:
+      c.inputRow = t.gRow
+      c.inputCol = t.cx
+    if '\r' in s and not s.startsWith("\e[200~") and t.enterRow < 0:
+      t.enterRow = t.gRow
+      t.enterAt = getMonoTime()
   if t.hosted:
     t.hostSend('d', s)
     return

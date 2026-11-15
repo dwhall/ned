@@ -78,8 +78,8 @@ proc osLine(): string =
     if ok and o.strip.len > 0: result.add " · Android " & o.strip
 
 proc termLine(inEditor: bool): string =
-  ## one line on the terminal: its TERM, whether it draws 24-bit or 256 colours and why ned thinks so, and its size in
-  ## columns and rows
+  ## one line on the terminal: its name (as it said), its TERM, whether it draws 24-bit or 256 colours and why ned
+  ## thinks so, and its size in columns and rows
   let tc = if inEditor: trueColor else: detectTrueColor()
   let (w, h) = if inEditor: (scrW, scrH) else: getTermSize()
   let why = trueColorWhy()
@@ -88,7 +88,8 @@ proc termLine(inEditor: bool): string =
             elif why.len > 0: "24-bit colour (" & why & ")"
             elif tcRgb: "24-bit colour (the terminal said so)"
             else: "24-bit colour"
-  result = "TERM=" & getEnv("TERM", "?") & " · " & how & " · " & $w & "×" & $h
+  result = (if inEditor and tcName.len > 0: tcName & " · " else: "") & "TERM=" & getEnv("TERM", "?") & " · " & how &
+           " · " & $w & "×" & $h
 
 proc setupRows(inEditor: bool): seq[SetupRow] =
   ## the rows of the setup check, in groups: the system (terminal and its answers, keys, emoji, underlines, remote

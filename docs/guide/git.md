@@ -74,6 +74,12 @@ summary it writes into the commit prompt, where you can change it before Enter c
 
 ## Checks before a commit
 
+**No secrets** (`git.secretsCheck`, on): a commit that takes an API key, a token, a password, a private key or a
+file of secrets (`.env`, `*.pem`, `id_ed25519` …) stops first and says where — *(o)pen it*, *(c)ommit anyway* or
+*(x) cancel*. Once pushed, a secret stays in the history, however it is taken out later. The secrets are known as
+the assistant's redaction knows them ([The AI assistant](ai.md#secrets)): by their shape, and by names that say they
+are secrets.
+
 `git.checksBeforeCommit` makes a commit — from the message box or with one line — check the files it takes first:
 
 - **format** — each file is formatted the way ned's own formatter would do it, on the text that is staged — only
@@ -284,13 +290,37 @@ token, and the dock shows who you push as ("GitHub: @you"). Other servers ask fo
 These need the GitHub CLI (`gh`, signed in). *Git: GitHub…* gathers them:
 
 - *Git: GitHub pull requests…* — pick one to *Check it out*, see *Its changes*, its *Checks (CI)*, *Read it* with its
-  comments, or open it in the browser. *Git: create a pull request (gh)* runs `gh pr create --fill` in the terminal.
-- *Git: GitHub issues…* — read one, or open it in the browser.
-- *Git: GitHub Actions (CI)…* — the latest runs; pick one to open it. The current branch's result is in the status
-  bar — **CI ✓**, **CI ✗** or **CI ⟳** (click it for the runs) — checked again after a push.
+  comments, *Approve…* (a comment if you like), *Request changes…*, *Comment…*, *Merge…* (squash, merge or rebase —
+  its branch deleted), or open it in the browser. *Git: create a pull request (gh)* runs `gh pr create --fill` in the
+  terminal.
+- *Git: comment on this line in the pull request…* — a review comment on the cursor's line, or on the selected
+  lines, of this branch's pull request. GitHub takes one only on lines the pull request changes, and on the version
+  it has: save and push first.
+- *Git: GitHub issues…* — *New issue…* (its title, then what it is about), or pick one to read it with its
+  comments, *Comment…*, *Close it* (with a comment if you like), or open it in the browser.
+- *Git: GitHub Actions (CI)…* — the latest runs. A failed one offers *Its errors in Problems* — the failed jobs' log
+  read for `file:line` places and GitHub's annotations, the runner's paths taken back to your checkout, the whole log
+  in a tab — and *Run the failed jobs again*. The current branch's result is in the status bar — **CI ✓**, **CI ✗**
+  or **CI ⟳** (click it for the runs) — checked again after a push.
 - *Git: GitHub review comments…* — the review threads of this branch's pull request, open ones first: *Go to it*,
   *Reply…*, *Resolve* (or *Open it again*), *Open on GitHub*. Once loaded, each open thread shows at the end of the
   line it is about, and its whole conversation on hover. They are fetched again after a push.
+
+### A release
+
+*Git: make a GitHub release…* asks for the tag — the one on this commit, else one made from the `.nimble` version —
+and the files to attach (what `build/` holds, to change), says what it will do, and with a yes runs it in a
+terminal, where you see each step:
+
+1. the tag made on this commit when it is new, and pushed;
+2. `SHA256SUMS` of the files, signed with your key when `git.releaseKey` names one (`ssh-keygen -Y sign`, in the
+   namespace `<the repository's folder>-release` — ned's own is `ned-release`, which `ned --update` checks; the
+   passphrase is asked in the terminal);
+3. `gh release create` with the files, `SHA256SUMS` and its signature, and the notes of the CHANGELOG's section for
+   that version — or, when it has none, the ones GitHub writes from the commits.
+
+A key that signs releases is made once — `ssh-keygen -t ed25519 -f ~/.ssh/release` — and its public half is what
+people check a release against (`ssh-keygen -Y verify`).
 
 ## Several repositories, and remote folders
 
@@ -323,7 +353,9 @@ terminal, remote work and scripting ned](terminal.md#gits-editor-ned---wait).
 | `git.autoRefresh` | `true` | refresh the Git dock while it is open: every minute where the repository is watched (Linux, Android), every few seconds elsewhere |
 | `git.untrackedFiles` | `"folders"` | a new folder as one line with its file count (`folders`), or every file on its own line (`all`) |
 | `git.inlineBlame` | `false` | who last changed the current line, and when, at its end |
+| `git.secretsCheck` | `true` | before a commit: an API key, a token, a password or a file of secrets in it stops it |
 | `git.checksBeforeCommit` | `"both"` | before a commit: `format`, `tests`, `both` or `off` |
+| `git.releaseKey` | `""` | the SSH key (its private file) that signs a release's `SHA256SUMS` |
 | `zen.gitChanges` | `false` | show the change marks in zen mode too |
 | `terminal.editorEnv` | `true` | in ned's terminal, ned is git's editor (`GIT_EDITOR`, and `EDITOR`/`VISUAL` where not set) |
 | `editor.formatOnSaveScope` | `"file"` | `changed`: format on save only the lines changed since git last saw the file |

@@ -156,6 +156,7 @@ Every command of the palette (Ctrl+E, or Ctrl+P and `>`), with its key or what i
 | Git: changes (every change, editable)… | Alt+Shift+G |
 | Git: cherry-pick from a branch… |  |
 | Git: clone a repository… |  |
+| Git: comment on this line in the pull request… | a review comment on the line, or the selected lines |
 | Git: commit (message box)… |  |
 | Git: commit… |  |
 | Git: compare with a branch… |  |
@@ -177,6 +178,7 @@ Every command of the palette (Ctrl+E, or Ctrl+P and `>`), with its key or what i
 | Git: history… |  |
 | Git: initialize a repository here | git init |
 | Git: interactive rebase… |  |
+| Git: make a GitHub release… | a tag, its notes, files with their SHA-256 — signed with git.releaseKey |
 | Git: merge editor (ours \| theirs \| result) |  |
 | Git: next change | F7 |
 | Git: next merge conflict |  |
@@ -291,6 +293,7 @@ Every command of the palette (Ctrl+E, or Ctrl+P and `>`), with its key or what i
 | Nim: backend JavaScript |  |
 | Nim: backend Objective-C |  |
 | Nim: benchmark a call… |  |
+| Nim: build for another system… | Windows, macOS, Linux or Android, with zig as the C compiler |
 | Nim: build mode danger |  |
 | Nim: build mode debug |  |
 | Nim: build mode release |  |

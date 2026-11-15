@@ -40,6 +40,13 @@
   file, ned puts the secret back. Files of secrets — `.env`, `*.pem`, `id_ed25519`, `credentials.json`, and what the
   project's `.gitignore` keeps out for its secrets — are not sent at all. `ai.redactSecrets` (on) — see
   [the AI assistant](ai.md#secrets).
+- **The assistant's commands in a sandbox** (Linux 5.13 and newer, `ai.sandbox`): a command the assistant runs, and
+  one an ACP agent asks ned to run, reads the system, Nim and the project, changes files only in the project, the
+  caches and a temporary folder of its own, has no network (`"net"` gives it one) and gets none of the API keys and
+  tokens in your environment — so a prompt hidden in a file cannot have it send your code or keys away, or change
+  your other files. Where there is no Landlock (Android, macOS, Windows) it runs as you, as before.
+- **No secrets in a commit** (`git.secretsCheck`): a commit that takes an API key, a token, a password or a file of
+  secrets stops first and says where — [Git](git.md#checks-before-a-commit).
 - **Plugins in a sandbox** (Linux 5.13 and newer): a plugin's process reads the project and what it needs to run,
   changes files only in its data folder and the project, and has no network, unless you allowed it more — the
   kernel holds it to that (Landlock), whatever its code does. It cannot read your other files (`~/.ssh`, your
@@ -56,7 +63,8 @@
   checked before it is installed: its SHA-256 against the release's `SHA256SUMS`, and `SHA256SUMS` against its
   signature (`SHA256SUMS.sig`, made with the release key whose public half is in ned's source,
   `src/ned/app/release-signers`). A package that does not match, or a release without `SHA256SUMS`, is refused and
-  nothing is installed; while releases are not signed yet, only the SHA-256 is checked, and that is said. Checking a
+  nothing is installed. From 6.51 on releases are signed; a ned built before its release key was in its source
+checks only the SHA-256, and says so. Checking a
   signature needs `ssh-keygen` (Termux: `pkg install openssh`). A release you download yourself: `ned --update
   --verify DIR` checks the files in DIR the same way.
 - *File › Compare with saved* shows your unsaved changes as a diff.

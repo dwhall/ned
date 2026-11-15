@@ -86,7 +86,7 @@ proc openSettingsUi(filter = "")
 proc aiAskAboutFile(path: string)
 proc rescanTests()
 proc toggleTerminal()
-proc newTerminal()
+proc newTerminal(cwd = "")
 proc cycleFocus(d: int)
 proc aiKey(): string
 proc aiCommitMessage()

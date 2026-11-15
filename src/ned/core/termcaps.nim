@@ -6,6 +6,7 @@
 #    · grapheme clusters (DEC mode 2027): an emoji sequence is one character, two columns wide
 #    · light or dark (mode 2031): told again whenever the terminal or the system switches
 #    · 24-bit colour and curly, coloured underlines (XTGETTCAP RGB, Tc, Smulx, Setulc; DECRQSS of a colour)
+#    · its name and version (XTVERSION): what it is over ssh, mosh or sudo too, where TERM_PROGRAM does not reach
 # ════════════════════════════════════════════════════════════════════════════
 
 var
@@ -25,6 +26,7 @@ var
   tcScheme = 0                   # mode 2031: 1 dark, 2 light (0: never said)
   tcSchemeNews = false           # (a new answer for the main loop: the theme may follow it)
   tcAnswers: seq[string]         # (what it answered, for Help › Check setup)
+  tcName = ""                    # its name and version, as it said (XTVERSION: "kitty(0.39.1)", "WezTerm 20240203…")
   termFocused = true             # the terminal window has the focus (focus events, mode 1004)
   focusLostAt = getMonoTime()
   focusNews = 0                  # (for the main loop: 1 the focus came back, 2 it went)
@@ -42,12 +44,20 @@ proc termKnownName(): bool =
   let t = getEnv("TERM")
   t in ["linux", "dumb", "cons25"] or t.startsWith("vt1") or t.startsWith("vt2") or t.len == 0
 
+proc termSays(names: varargs[string]): bool =
+  ## the terminal's own name (XTVERSION) starts with one of these, case aside: "kitty", "wezterm", "ghostty" …
+  let n = tcName.toLowerAscii
+  for x in names:
+    if n.startsWith(x.toLowerAscii): return true
+  false
+
 proc undercurlByName(): bool =
   ## terminals known to draw curly, coloured underlines (and tmux, which reads them and draws what its terminal can)
   let t = getEnv("TERM")
   let p = getEnv("TERM_PROGRAM")
   if t in ["xterm-kitty", "xterm-ghostty", "foot", "foot-extra", "wezterm", "alacritty", "contour"]: return true
   if p in ["WezTerm", "ghostty", "vscode"]: return true
+  if termSays("kitty", "wezterm", "ghostty", "foot", "contour", "alacritty"): return true
   if getEnv("TMUX").len > 0: return true
   let vte = getEnv("VTE_VERSION")
   if vte.len > 0 and vte.allCharsInSet(Digits) and parseInt(vte) >= 5200: return true      # (GNOME Terminal, Tilix …)
@@ -98,7 +108,7 @@ proc termCapsStart() =
   if tc2027On: writeAll("\e[?2027h")
   writeAll("\e[?2031h")                # (tell me when light and dark switch)
   if termKnownName(): return
-  var q = "\e[?u\e[?2027$p\e[?996n\e[c"
+  var q = "\e[?u\e[?2027$p\e[?996n\e[>0q\e[c"
   for name in ["RGB", "Tc", "Smulx", "Setulc"]:
     q.add "\eP+q" & toHex(name).toLowerAscii & "\e\\"
   if not trueColor: q.add "\e[48;2;1;2;3m\eP$qm\e\\\e[0m"   # (does a 24-bit colour stay what it was set to?)
@@ -147,7 +157,14 @@ proc termCsiReply(priv, inter, fin: char, params: seq[int]): bool =
   fin in {'c', 'y', 'n'}            # (DA1 and other answers: not keys)
 
 proc termDcsReply(body: string) =
-  ## DCS answers: XTGETTCAP (1+r<name>=<value>) and DECRQSS (1$r<SGR>)
+  ## DCS answers: XTVERSION (>|<name>), XTGETTCAP (1+r<name>=<value>) and DECRQSS (1$r<SGR>)
+  if body.startsWith(">|"):
+    tcName = body[2 .. ^1].strip
+    if tcName.len > 60 or not tcName.allCharsInSet({' ' .. '~'}): tcName = ""
+    if tcName.len > 0:
+      tcNote(tcName)
+      if termSays("kitty", "wezterm", "ghostty", "foot", "contour", "alacritty"): applyUndercurl()
+    return
   if body.startsWith("1+r"):
     for part in body[3 .. ^1].split(';'):
       let name = hexName(part.split('=')[0])

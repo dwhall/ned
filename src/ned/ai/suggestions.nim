@@ -252,6 +252,81 @@ proc aiFastAsk(instr, user: string, maxTokens: int, onText: proc(t: string) {.cl
         t = ls.join("\n")
     onText(restoreSecrets(t, aiSecretTab)))       # (code to put in a file: a placeholder back to its secret)
 
+var fimRefused: HashSet[string]       # models a fill-in-the-middle request failed for: they get the chat's way
+
+proc fimEndpoint(model: string): string =
+  ## where a fill-in-the-middle request goes (ai.inlineCompletionFim auto): Mistral's (Codestral), DeepSeek's (its
+  ## beta completions) or Ollama's (a code model's own infill); "" for the chat's way — another provider, off, or a
+  ## model that refused it once
+  if sStr("ai.inlineCompletionFim") == "off" or model in fimRefused: return ""
+  let base = aiProviderBase()
+  if base.len == 0: return ""
+  let root = if base.endsWith("/v1"): base[0 ..< base.len - 3] else: base
+  case cfgAiProvider
+  of "mistral": base & "/fim/completions"
+  of "deepseek": root & "/beta/completions"
+  of "ollama": root & "/api/generate"
+  else: ""
+
+proc fimModel(): string =
+  ## the model of a fill-in-the-middle request: ai.inlineCompletionModel, else the provider's own code model
+  let m = sStr("ai.inlineCompletionModel")
+  if m.len > 0: return m
+  case cfgAiProvider
+  of "mistral": "codestral-latest"
+  of "deepseek": "deepseek-chat"
+  else: aiModel()
+
+proc aiFimAsk(pre, suf: string, maxTokens: int, onText: proc(t: string) {.closure.},
+              onFail: proc() {.closure.}): Job =
+  ## a fill-in-the-middle request: the code before the cursor and after it, the model's own way of writing what goes
+  ## between (no instructions, no chat) — faster and closer than asking a chat model; nil when this provider has none.
+  ## A model that refuses it is remembered (fimRefused) and onFail called: the chat's way is used from then on
+  let model = fimModel()
+  let url = fimEndpoint(model)
+  if url.len == 0 or not haveExe("curl"): return nil
+  let key = aiKey()
+  if key.len == 0 and cfgAiProvider != "ollama": return nil
+  let pre = redactSecrets(pre, aiSecretTab)
+  let suf = redactSecrets(suf, aiSecretTab)
+  let body = if cfgAiProvider == "ollama":
+               %*{"model": model, "prompt": pre, "suffix": suf, "stream": false, "raw": false,
+                  "options": {"temperature": 0, "num_predict": maxTokens}}
+             else: %*{"model": model, "prompt": pre, "suffix": suf, "max_tokens": maxTokens, "temperature": 0}
+  var hdr = "Content-Type: application/json\n"
+  if key.len > 0: hdr.add "Authorization: Bearer " & key & "\n"
+  let hf = privTmp("ai-h")
+  let bf = privTmp("ai-b")
+  try:
+    writeFile(hf, hdr)
+    setFilePermissions(hf, {fpUserRead, fpUserWrite})
+    writeFile(bf, utf8Repaired($body))
+    setFilePermissions(bf, {fpUserRead, fpUserWrite})
+  except CatchableError: return nil
+  startJob(jkTool, "curl -sS --max-time 20 -X POST " & quoteShell(url) & " -H @" & quoteShell(hf) & " --data-binary @" &
+           quoteShell(bf), rootDir, proc(j: Job) =
+    try:
+      removeFile(hf)
+      removeFile(bf)
+    except CatchableError: discard
+    if j.code != 0: return
+    var t = ""
+    try:
+      let r = parseJson(j.output)
+      if jHasErr(r) or r{"error"} != nil:
+        fimRefused.incl model
+        onFail()
+        return
+      if r{"response"} != nil: t = r["response"].getStr                         # (Ollama's)
+      elif r{"choices"} != nil and r["choices"].kind == JArray and r["choices"].len > 0:
+        let c = r["choices"][0]
+        t = if c{"text"} != nil: c["text"].getStr else: c{"message", "content"}.getStr
+    except CatchableError:
+      fimRefused.incl model
+      onFail()
+      return
+    onText(restoreSecrets(t, aiSecretTab)))
+
 proc ghostRequest(b: Buffer) =
   ## ask for a short continuation at the cursor (one request in flight; stale answers are dropped)
   if aiSecretFile(b.path): return                 # (a file of secrets is not sent: ai.redactSecrets)
@@ -277,7 +352,7 @@ proc ghostRequest(b: Buffer) =
   let id = b.id
   let ch = b.changeId
   let at = p
-  let job = aiFastAsk(instr, user, (if afterComment: 400 else: 128), proc(t0: string) =
+  let onText = proc(t0: string) =
     let bb = bufById(id)
     if bb == nil or bb.changeId != ch or bb.primary.head != at: return
     var t = t0.strip(leading = false)
@@ -297,7 +372,11 @@ proc ghostRequest(b: Buffer) =
     ghostBuf = id
     ghostPos = at
     ghostChange = ch
-    needRender = true, proc() = ghostAskedChange = -1)
+    needRender = true
+  # (fill-in-the-middle first where the provider has it: Mistral, DeepSeek, Ollama — else the chat model is asked)
+  var job = aiFimAsk(pre, suf, (if afterComment: 400 else: 128), onText, proc() = ghostAskedChange = -1)
+  if job == nil:
+    job = aiFastAsk(instr, user, (if afterComment: 400 else: 128), onText, proc() = ghostAskedChange = -1)
   if job != nil: ghostJob = job
 
 proc ghostTick() =

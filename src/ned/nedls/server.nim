@@ -28,6 +28,7 @@ HTML, CSS, SQL and JSON
 
 Usage: nedls [--stdio] [--verbose] [--log:FILE]
        nedls --lint [options] [FILE|FOLDER…]    the engine's checks over files, no editor (nedls --lint --help)
+       nedls --mcp [--root DIR]                 the Nim engine as an MCP server for coding agents (--mcp --help)
        nedls --version | --help
 
 Editors start it and talk to it over stdin/stdout. It gives what ned gives in its own editor — completion with

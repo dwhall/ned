@@ -24,7 +24,7 @@ Made by **Sultan Al Isaiee** ([@foxoman](https://github.com/foxoman)) — [www.f
 
 ## Contents
 
-- [What's new in 6.50](#whats-new-in-650) · [6.49](CHANGELOG.md#whats-new-in-649) · [6.48](CHANGELOG.md#whats-new-in-648) · [6.47.1](CHANGELOG.md#whats-new-in-6471) · [6.47](CHANGELOG.md#whats-new-in-647) · [6.46](CHANGELOG.md#whats-new-in-646) · [6.45](CHANGELOG.md#whats-new-in-645) · [6.44](CHANGELOG.md#whats-new-in-644) · [6.43.1](CHANGELOG.md#whats-new-in-6431) · [6.43](CHANGELOG.md#whats-new-in-643) · [6.42.1](CHANGELOG.md#whats-new-in-6421) · [6.42](CHANGELOG.md#whats-new-in-642) · [6.41.1](CHANGELOG.md#whats-new-in-6411) · [6.41](CHANGELOG.md#whats-new-in-641) · [6.40](CHANGELOG.md#whats-new-in-640) · [6.39](CHANGELOG.md#whats-new-in-639) · [6.38](CHANGELOG.md#whats-new-in-638) · [6.37](CHANGELOG.md#whats-new-in-637) · [6.36](CHANGELOG.md#whats-new-in-636) · [6.35](CHANGELOG.md#whats-new-in-635) · [6.34](CHANGELOG.md#whats-new-in-634) · [6.33](CHANGELOG.md#whats-new-in-633) · [6.32](CHANGELOG.md#whats-new-in-632) · [older releases](CHANGELOG.md)
+- [What's new in 6.51](#whats-new-in-651) · [6.50](CHANGELOG.md#whats-new-in-650) · [6.49](CHANGELOG.md#whats-new-in-649) · [6.48](CHANGELOG.md#whats-new-in-648) · [6.47.1](CHANGELOG.md#whats-new-in-6471) · [6.47](CHANGELOG.md#whats-new-in-647) · [6.46](CHANGELOG.md#whats-new-in-646) · [6.45](CHANGELOG.md#whats-new-in-645) · [6.44](CHANGELOG.md#whats-new-in-644) · [6.43.1](CHANGELOG.md#whats-new-in-6431) · [6.43](CHANGELOG.md#whats-new-in-643) · [6.42.1](CHANGELOG.md#whats-new-in-6421) · [6.42](CHANGELOG.md#whats-new-in-642) · [6.41.1](CHANGELOG.md#whats-new-in-6411) · [6.41](CHANGELOG.md#whats-new-in-641) · [6.40](CHANGELOG.md#whats-new-in-640) · [6.39](CHANGELOG.md#whats-new-in-639) · [6.38](CHANGELOG.md#whats-new-in-638) · [6.37](CHANGELOG.md#whats-new-in-637) · [6.36](CHANGELOG.md#whats-new-in-636) · [6.35](CHANGELOG.md#whats-new-in-635) · [6.34](CHANGELOG.md#whats-new-in-634) · [6.33](CHANGELOG.md#whats-new-in-633) · [6.32](CHANGELOG.md#whats-new-in-632) · [older releases](CHANGELOG.md)
 - [Features](#features)
 - [Installing](#installing)
 - [First steps](#first-steps)
@@ -33,39 +33,48 @@ Made by **Sultan Al Isaiee** ([@foxoman](https://github.com/foxoman)) — [www.f
 
 ---
 
-## What's new in 6.50
+## What's new in 6.51
 
-**A problem, recorded and played back.** `ned --record bug.rec FILE` records a session — every key and mouse
-event, what the terminal answers, its size, and the text of the files you open — and `ned --replay bug.rec` plays
-it back on another machine, key by key, with the same pauses, at the same size and with the same settings. A
-problem seen on a phone can be seen again where it gets fixed, with no screenshot to guess from. The recording is a
-text file that holds everything you typed, so read it before you send it; your settings go in without their API keys
-and tokens. A replay runs in a folder of its own, and on Linux is kept inside it with no network, because it types
-again what was typed, in ned's terminal too ([Troubleshooting](docs/guide/troubleshooting.md)).
+**Every shell, every terminal.** The terminal marks each command — its prompt, its command line, its output and how
+it ended — in sh, dash, ash, ksh, mksh, yash, elvish, xonsh, PowerShell and cmd.exe, as it did in bash, zsh and
+fish; nushell marks them itself. (The POSIX shells have no hook before a command: the Enter you press is where one
+starts.) A split starts in the folder the shell is in (OSC 7), and VS Code's marks (OSC 633) are read too. A
+compiler's error, a `path:line` or a web link in the terminal opens with Ctrl+click — or from the right-click menu,
+on a tablet. ned asks the terminal it runs in for its name (XTVERSION), so pictures, progress and curly underlines
+are right over ssh and in tmux, where `TERM_PROGRAM` does not reach; inside zellij and screen pictures are drawn in
+cells. `ned --completions bash|zsh|fish` prints the Tab completion of ned's and nedfmt's options, and the Termux
+package installs it ([The terminal](docs/guide/terminal.md#shell-integration-the-commands-you-ran)).
 
-**Safe mode.** `ned --safe` starts with ned's default settings, no plugins and nothing kept from before, and leaves
-your own settings and state as they are: the quick way to tell whether a problem is ned's, a setting's or a
-plugin's.
+**The assistant knows the code as ned does.** In a Nim project the assistant asks ned's engine — where a name is
+declared, every use of it, the type of an expression, which routines fit a signature, a file's outline — instead of
+reading whole files and guessing. `nedls --mcp` gives the same tools to any coding agent as an MCP server
+(`claude mcp add ned -- nedls --mcp`), and the agents in ned's AI dock get it by themselves. MCP servers on the web
+work too: `{"url": "https://…", "headers": {"Authorization": "Bearer ${TOKEN}"}}` in `ai.mcpServers`. GitHub
+Copilot is one of the agents *AI: choose agent…* adds with a tap. With Mistral (Codestral), DeepSeek and Ollama the
+inline suggestions are written by fill-in-the-middle — the code after the cursor goes with the code before it —
+which is quicker and fits better (`ai.inlineCompletionFim`) ([The AI assistant](docs/guide/ai.md)).
 
-**No nimsuggest with Nim 2.4.** For what its own engine cannot work out — the type of a `let` a macro makes, which
-overload a call picks — ned started nimsuggest for a moment: after a pause in your typing, and on a hover with no
-answer. Each run read the whole project into memory again, hundreds of megabytes, and on a phone that could close
-Termux. With Nim 2.4 or newer the compiler's own reading of the text comes with its checks, and ned takes these
-answers from it: nimsuggest is not started unless you turn it on (`nim.nimsuggest`). The hover of a name a macro
-makes shows the routine as the compiler declares it. With an older Nim nothing changes
-([Nim IDE](docs/guide/nim.md)).
+**Safer by default.** On Linux the commands the assistant and the agents run through ned are kept in a sandbox
+(`ai.sandbox`): they change files only in the project and the caches, have no network, and get none of the API keys
+and tokens in your environment. A commit that would take an API key, a token, a password or a `.env` file stops
+first (`git.secretsCheck`): once pushed, a secret stays in the history. The API key can come from a password manager
+or the system's keyring (`ai.apiKeyCommand`) instead of the settings file. This release's SHA256SUMS is signed, and
+the next ned takes its key in: from then on `ned --update` installs only a release signed with it
+([Safety](docs/guide/safety.md)).
 
-**Find a routine by its signature.** *Nim: find a routine by its signature…* is for when you know the types in your
-hands and the type you want, but not the name: `(string, char) -> seq[string]` finds `split`, `-> JsonNode`
-everything that gives one. The types go in any order, a `seq` fits an `openArray`, a generic's `T` fits anything;
-what the file can call comes first, then routines of modules it does not import yet.
+**GitHub from ned.** Approve a pull request, ask for changes or merge it; comment on a line of the branch's pull
+request (*Git: comment on this line in the pull request…*); open, comment on and close issues; a failed CI run's
+errors go to Problems, and its failed jobs can run again. *Git: make a GitHub release…* makes the tag, takes its
+notes from the CHANGELOG, attaches the files with their SHA256SUMS and signs them with your key (`git.releaseKey`)
+([Git](docs/guide/git.md#github)).
 
-**Types, closer to the compiler's.** Three places where what ned showed was not what the compiler has:
-- after a save, a `let` of a `ref object` type showed `: ref Node:ObjectType`, the compiler's inner name: it shows
-  `: Node`; and `: Stream` stays `Stream`, not `ref StreamObj`;
-- a long array or table constant (over 200 characters) had the wrong type — `array[2, int]` for 81 numbers, none
-  for a table: the length and the type are right, and its hover says how many items it leaves out;
-- completion after a string literal offers `fmt` and the other routines that take a `static string`.
+**Nim.** *Nim: build for another system…* builds the project for Windows, macOS, Linux or Android, with zig as the
+C compiler (Termux: `pkg install zig`). A module whose compiler output is very big — one with many includes, as
+ned's own is — now gets the compiler's types, colours and go to definition as well: the engine worker reads it in
+pieces, so the keys never wait for it ([Nim IDE](docs/guide/nim.md)). The engine knows what a template gives when
+its body is one expression — `template lines(w: Body): untyped = w.lr.lines` — so the names that come from it have
+their types and members too. Plugins can ask the assistant (`askAi`), with a permission of their own, "ai"
+([Plugins](docs/plugins/README.md#permissions)).
 
 ## Features
 
@@ -157,8 +166,9 @@ sections and symbols — Nim's procs by their Nim names, the bytes each module t
 decompiled to C beside it. → [Hex editor, programs and the decompiler](docs/guide/hex-and-binaries.md)
 
 **Integrated terminal** — a real pty with an xterm-compatible emulator: vim, htop, less, git, ssh all work;
-several terminals (two side by side), scrollback, mouse, selection and copy; with bash, zsh and fish every command
-is marked — Ctrl+↑/↓ go through them, failed ones show red, a command's output can be copied or it can be run again.
+several terminals (two side by side), scrollback, mouse, selection and copy; with bash, zsh, fish, sh, ksh,
+elvish, xonsh, PowerShell and nushell every command is marked — Ctrl+↑/↓ go through them, failed ones show red, a
+command's output can be copied or it can be run again; Ctrl+click opens the file and line an error names.
 `ned FILE` there opens FILE in this ned, and this ned is git's editor (`git commit` opens the message in a tab). → [The terminal and remote work](docs/guide/terminal.md)
 
 **Remote control** — scripts reach the running ned: `ned --remote FILE:LINE`, `--remote-command`,
@@ -173,22 +183,27 @@ terminal. → [Troubleshooting](docs/guide/troubleshooting.md)
 **The terminal it runs in, asked** — the kitty keyboard protocol (Ctrl+Shift+letters, Ctrl+I apart from Tab),
 24-bit colour, curly underlines in the problem's colour, emoji sequences as one character (mode 2027), light and
 dark following the system (mode 2031), the focus (files looked at again when you come back, background work paused
-while you are away), the terminal's title, progress on its tab, a transparent background.
+while you are away), the terminal's title, progress on its tab, a transparent background, and its name (XTVERSION),
+which ssh does not pass on.
 
 **Git** — source-control dock (stage, unstage, discard, diff, commit, push, pull, log), every change not committed
 in one editable view (Alt+Shift+G: stage, unstage or revert each), gutter marks that follow your typing, change
 navigation and revert, inline blame, file timeline, AI-written commit messages,
 interactive rebase, cherry-pick, branch compare and graph, the history of some lines, bisect (by hand or with a
-command), worktrees, submodules, GitHub pull requests, issues and CI status (`gh`), review comments on their
-lines; signing in to GitHub (the GitHub CLI or an SSH key — no passwords), undo of the last commit, pull or
-merge, and checks before a commit (formatted, tests passing). → [Git](docs/guide/git.md)
+command), worktrees, submodules, GitHub pull requests (review, merge), issues, CI (its errors in Problems) and
+releases (signed) with `gh`, review comments on their lines; signing in to GitHub (the GitHub CLI or an SSH key —
+no passwords), undo of the last commit, pull or merge, and checks before a commit (no secrets, formatted, tests
+passing). → [Git](docs/guide/git.md)
 
 **AI** — chat and agent (read, search, edit files, run commands — you approve edits and commands; its edits are
 checked with `nim check` and the like, and it is told what is wrong), a plan first and then each step with a
 restore point, tests it writes kept only when they pass, a failing test made to pass (kept only when it does),
-answers grounded in the declarations your code uses, inline edit of a selection (Alt+Shift+C), undo of the agent's
+answers grounded in the declarations your code uses, ned's Nim engine as its tools (and as an MCP server for other
+agents: `nedls --mcp`), its commands in a sandbox, inline edit of a selection (Alt+Shift+C), undo of the agent's
 changes, token and cost counter, AI review of staged changes, a local model on the device (Ollama or llama.cpp,
-set up for you: offline on a phone too), MCP servers for more tools, their prompts (/server:prompt) and resources (@server:uri); Anthropic, OpenAI, OpenRouter, Ollama, Groq, DeepSeek, Gemini, Mistral or any
+set up for you: offline on a phone too), MCP servers for more tools — on your machine or on the web — their prompts
+(/server:prompt) and resources (@server:uri); Claude Agent, Codex, Gemini CLI, GitHub Copilot and any other ACP
+agent in the AI dock; Anthropic, OpenAI, OpenRouter, Ollama, Groq, DeepSeek, Gemini, Mistral or any
 OpenAI-compatible endpoint. → [The AI assistant](docs/guide/ai.md)
 
 ![Colour swatches, and a ruler at column 80 with the rest of the long line tinted](screenshots/rulers-swatches.png)
@@ -230,7 +245,7 @@ ned
 ```
 
 or, from the project folder: `nimble termux` (ned, with `nedfmt` and `nedls` beside it) — or a ready-made package,
-`pkg install ./ned_6.50.0_aarch64.deb` (ned, nedls, nedfmt; the example plugins in `$PREFIX/share/ned/plugins`):
+`pkg install ./ned_6.51.0_aarch64.deb` (ned, nedls, nedfmt; the example plugins in `$PREFIX/share/ned/plugins`):
 `nimble termuxdeb` makes it on a Linux machine (with zig).
 
 The Nim IDE features need nothing more: the engine is built in, and `nim check` does the rest.

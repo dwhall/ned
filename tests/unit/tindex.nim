@@ -1045,4 +1045,18 @@ suite "found by the grades against the compiler (6.50)":
     let (f, ls) = fixture("import std/strformat\nlet x = 7\necho \"v {x}\".\n")
     check "fmt" in labels(nxComplete(f, ls, 2, ls[2].len))
 
+suite "found by the grades against the compiler (6.51)":
+  test "a template that gives `untyped`, its body one expression: what that body gives":
+    # (index.nim's own: `template lines(w: NxRsBody): untyped = w.lr.lines`, `template s: untyped = r.sym`)
+    let (f, ls) = fixture("type\n  Lines = ref object\n    lines: seq[string]\n  Body = object\n    lr: Lines\n" &
+                          "template lines(w: Body): untyped = w.lr.lines\n" &
+                          "proc go(w: Body, all: seq[Body]) =\n  let t = w.lines[0]\n  let c = t[0]\n" &
+                          "  template b: untyped = all[0]\n  let n = b.lines.len\n  echo c, n\n")
+    let sc = nxScope(f)
+    check nxTypeOfExpr(f, sc, nxLocals(f, ls, 8, 0), "w.lines", 8, 0).typ == "seq[string]"
+    check nxTypeOfExpr(f, sc, nxLocals(f, ls, 9, 0), "t", 9, 0).typ == "string"
+    check nxTypeOfExpr(f, sc, nxLocals(f, ls, 9, 0), "c", 9, 0).typ == "char"       # (was none: t was not known)
+    check nxTypeOfExpr(f, sc, nxLocals(f, ls, 11, 0), "b", 11, 0).typ == "Body"
+    check nxTypeOfExpr(f, sc, nxLocals(f, ls, 11, 0), "n", 11, 0).typ == "int"
+
 removeDir(dir)

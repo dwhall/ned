@@ -132,11 +132,12 @@ proc openTerminal() =
     if rc.len > 0: terms[^1].name = remotes[remoteOf(rootDir)].host
     curTerm = terms.high
 
-proc newTerminal() =
+proc newTerminal(cwd = "") =
   ## adds a terminal — a shell on the server in a remote folder — makes it the current one, opens the panel on it and
-  ## gives it the focus
+  ## gives it the focus; `cwd`: the folder it starts in (else termCwd)
   let rc = remoteShellCmd()
-  terms.add newTerm(max(20, lay.edW), max(4, lay.panelH - 1), termCwd(), rc, keep = true)
+  let dir = if cwd.len > 0 and rc.len == 0 and dirExists(cwd): cwd else: termCwd()
+  terms.add newTerm(max(20, lay.edW), max(4, lay.panelH - 1), dir, rc, keep = true)
   if rc.len > 0: terms[^1].name = remotes[remoteOf(rootDir)].host
   curTerm = terms.high
   setPanel(pkTerminal)
@@ -178,6 +179,63 @@ proc termRowAt(t: Term, vr: int): TRow =
   elif t.scr.len == 0: @[]
   else: t.scr[clamp(abs - t.sb.len, 0, t.scr.high)]
 
+proc termLinkAt(t: Term, vr, col: int): (string, int, int, string) =
+  ## what a visible row of the terminal names at a column: a place in a file — a compiler's error, path:line:col,
+  ## file.nim(12, 5) — as its path, line and column (relative paths from the folder the shell is in), or a web link
+  ## as ("", 0, 0, url); ("", 0, 0, "") for neither
+  let row = t.termRowAt(vr)
+  let text = rowText(row)
+  if text.len == 0: return ("", 0, 0, "")
+  # (the word under the column, in characters: the row's text has no placeholders of wide characters)
+  var cs: seq[int]                                 # the column each byte of `text` came from
+  for x in 0 ..< row.len:
+    if row[x].ch != 0:
+      var one = ""
+      one.addUtf8(int(if row[x].ch < 32: 32'u32 else: row[x].ch))
+      for _ in 0 ..< one.len: cs.add x
+  var at = -1
+  for i in 0 ..< min(cs.len, text.len):
+    if cs[i] <= col: at = i
+  if at < 0 or text[at] == ' ': at = -1
+  var word = ""
+  if at >= 0:
+    var a = at
+    var e = at
+    while a > 0 and text[a - 1] != ' ': dec a
+    while e + 1 < text.len and text[e + 1] != ' ': inc e
+    word = text[a .. e].strip(chars = {'(', ')', '[', ']', '<', '>', '"', '\'', '`', ',', '.', ';'})
+    let u = max(word.find("https://"), word.find("http://"))
+    if u >= 0: return ("", 0, 0, word[u .. ^1])
+  let cwd = if t.cwd.len > 0 and dirExists(t.cwd): t.cwd else: termCwd()
+  for s in [word, text]:
+    if s.len == 0: continue
+    let (ok, path, l, c, _, _) = parseErrLine(s, cwd)
+    if ok: return (path, l, c, "")
+  if word.len > 0:
+    let p = resolvePath(word, cwd)
+    if p.len > 0: return (p, 0, 0, "")
+  ("", 0, 0, "")
+
+proc termOpenLink(path: string, line, col: int, url: string) =
+  ## opens what termLinkAt found: the file at its line and column, or the web link in the browser
+  if url.len > 0:
+    openLinkTarget(url)
+    return
+  pushJump()
+  let nb = openFile(path)
+  if nb != nil:
+    nb.centerOn(nb.clampPos(Pos(line: line, col: col)))
+    focus = fEditor
+
+proc termLinkClick(x, y: int): bool =
+  ## Ctrl+click in the terminal: opens what the row names there (termLinkAt) — false when it names nothing
+  let t = curTermObj()
+  if t == nil: return false
+  let (p, l, c, u) = t.termLinkAt(y - termRect.y, x - termRect.x)
+  if p.len == 0 and u.len == 0: return false
+  termOpenLink(p, l, c, u)
+  true
+
 proc inSel(t: Term, absRow, col: int): bool =
   ## true when the cell at that absolute row and column is inside the terminal's selection, whichever way it was dragged
   if not t.hasSel: return false
@@ -215,6 +273,7 @@ proc termCmdChip(t: Term): (string, Rgb) =
   let secs = (c.ended - c.started).inMilliseconds.float / 1000
   let dur = if secs < 10: formatFloat(secs, ffDecimal, 1) & " s" else: $int(secs) & " s"
   if c.code == 0: (ic("ok") & " " & dur, theme.gitAdd)
+  elif c.code < 0: ("done · " & dur, theme.dim)          # (a shell that does not say how it ended: cmd.exe)
   else: ("✗ exit " & $c.code & " · " & dur, theme.err)
 
 proc drawTermPane(ti: int, x0, y0, w, h: int, focused: bool) =
@@ -302,12 +361,21 @@ proc drawTermPane(ti: int, x0, y0, w, h: int, focused: bool) =
       if termSplit: termOther = curTerm
       curTerm = tix
     termRect = paneRect
+    if mouseCtrl and termLinkClick(mouseX, mouseY): return
     termClick(mouseX, mouseY), "", proc() =
     if termSplit and tix != curTerm: termOther = curTerm
     curTerm = tix
     termRect = paneRect
     let tt = curTermObj()
-    var items = @[mi("Copy", "", proc() = termCopySel()), mi("Paste", "", proc() =
+    var items: seq[MenuItem]
+    if tt != nil:
+      # (what the row names — a file's place, a web link — opens from here too: a tablet has no Ctrl+click)
+      let (lp, ll, lc, lu) = tt.termLinkAt(mouseY - termRect.y, mouseX - termRect.x)
+      if lp.len > 0 or lu.len > 0:
+        items.add mi("Open " & truncTo(if lu.len > 0: lu else: relPath(lp) & ":" & $(ll + 1), 50), "Ctrl+click",
+                     proc() = termOpenLink(lp, ll, lc, lu))
+        items.add msep()
+    items.add @[mi("Copy", "", proc() = termCopySel()), mi("Paste", "", proc() =
       let txt = clipGet()
       if tt != nil and txt.len > 0:
         if tt.bracketed: tt.termWrite("\e[200~" & txt & "\e[201~") else: tt.termWrite(txt.replace("\n", "\r")))]
@@ -324,7 +392,7 @@ proc drawTermPane(ti: int, x0, y0, w, h: int, focused: bool) =
         tt.view = 0
         tt.navCmd = -1
         tt.termWrite("\x0c"))
-    items.add mi("New terminal", "", proc() = newTerminal())
+    items.add mi("New terminal", "", proc() = newTerminal(if tt != nil: tt.cwd else: ""))
     items.add mi((if termSplit: "Unsplit" else: "Split: two side by side"), "", proc() = runCmd("Terminal: split"))
     items.add mi("Kill terminal", "", proc() =
       if tt != nil and tt.pid > 0:
@@ -401,7 +469,7 @@ proc termNav(t: Term, d: int) =
   for i, c in t.cmds:
     if c.ran and c.promptRow >= t.sbDropped: ran.add i
   if ran.len == 0:
-    info("No commands yet" & (if t.integrated: "" else: " — this shell sends no command marks (terminal.shellIntegration: bash, zsh, fish)"))
+    info("No commands yet" & (if t.integrated: "" else: " — this shell sends no command marks (terminal.shellIntegration)"))
     return
   var k = ran.find(t.navCmd)
   if k < 0: k = (if d < 0: ran.len else: -1)
@@ -449,7 +517,7 @@ proc termCmdMenu(ti, ci: int) =
   let tt = t
   let cmd = c.text
   openActions("$ " & truncTo(c.text, 50) & (if c.endRow < 0: "  (running)" elif c.code == 0: "  " & ic("ok")
-                                             else: "  ✗ exit " & $c.code), @[
+                                             elif c.code < 0: "" else: "  ✗ exit " & $c.code), @[
     act("Copy its output", $n & " line(s)", proc() =
       clipSet(outp)
       info("Copied the output (" & $n & " lines)")),
@@ -482,7 +550,8 @@ proc termCommands() =
     capture ti, ci:
       items.add act(glyph & " " & truncTo(c.text, 60), det, proc() = termCmdMenu(ti, ci))
   if items.len == 0:
-    info(if t.integrated: "No commands in this terminal yet" else: "This shell sends no command marks — bash, zsh and fish do")
+    info(if t.integrated: "No commands in this terminal yet"
+         else: "This shell sends no command marks — bash, zsh, fish, sh, ksh, nushell, elvish, xonsh, PowerShell do")
     return
   openActions("Terminal commands", items)
 
@@ -494,8 +563,10 @@ proc termSplitToggle() =
     info("One terminal")
     return
   if terms.len < 2:
+    # (the new half starts in the folder the shell said it is in, OSC 7, as in other terminals' splits)
     let prev = curTerm
-    newTerminal()
+    let t0 = curTermObj()
+    newTerminal(if t0 != nil: t0.cwd else: "")
     termOther = prev
   else:
     termOther = if curTerm == 0: 1 else: curTerm - 1

@@ -366,7 +366,14 @@ the Coder Nerd Font Mono, at twice the size, framed, in 256 colours. The font is
 | fuzz, engine | by hand only (*Run workflow*): fuzzing for a given time; the full comparison with nimsuggest |
 
 [`.github/workflows/weekly.yml`](../../.github/workflows/weekly.yml), every Monday (and by hand): the fuzzer on a
-build with AddressSanitizer — see [The fuzzer](#the-fuzzer).
+build with AddressSanitizer — see [The fuzzer](#the-fuzzer) — and nimony built from its main branch, with ned's
+Nim 3 tests (`t_612_nim3`, `t_627_nim3_contracts`, `t_628_hastur_tests`, `t_637_nim3_typing`) run against it: what
+changed in Nim 3 that ned must follow shows there first.
+
+The ui job installs the shells the shell-integration tests run (zsh, fish, ksh, mksh, yash, elvish; dash is there):
+a shell that is missing is skipped. Not xonsh: Ubuntu's package brings a pytest plugin that the pytest from pip
+refuses, and the pytest tests would fail. PowerShell and nushell are not installed either — their integration is
+not tested in CI.
 
 [`.github/workflows/build.yml`](../../.github/workflows/build.yml) builds ned, nedfmt and nedls for Linux (gcc,
 clang, and the oldest Nim supported), macOS, Linux arm64, Termux and Windows (WSL and native), runs the command-line

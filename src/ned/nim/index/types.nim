@@ -746,6 +746,23 @@ proc nxRestFit(f: NxFile, sc: NxScope, locals: seq[NxSym], s: NxSym, argExprs: s
     if c == 0: return -1
     result += c
 
+proc nxFileLines*(path: string): seq[string]
+proc nxTemplateBody*(lines: seq[string], s: NxSym): seq[string]
+
+proc nxTemplateBodyType(f: NxFile, sc: NxScope, locals: seq[NxSym], s: NxSym, argTypes: seq[string],
+                        line, depth: int): string =
+  ## what a template that says it gives `untyped` gives, when its body is one expression (template lines(w: Body):
+  ## untyped = w.lr.lines; template s: untyped = r.sym): that expression's type where the template is declared,
+  ## each parameter taking its argument's type — "" for a longer body
+  if depth > 8 or f == nil: return ""
+  let body = nxTemplateBody(nxFileLines(f.path), s)
+  if body.len != 1 or body[0].strip.len == 0: return ""
+  var loc = locals
+  for k, p in s.params:
+    let t = if k < argTypes.len and argTypes[k].len > 0: argTypes[k] else: p.typ
+    loc.add NxSym(name: p.name, kind: nxParam, typ: (if t in ["untyped", "typed"]: "" else: t), line: line)
+  nxStripMods(nxTypeOfExpr(f, sc, loc, body[0].strip, line, depth + 1).typ)
+
 proc nxCallType*(f: NxFile, sc: NxScope, locals: seq[NxSym], name: string, recv: string, line, depth: int,
                 genArgs: seq[string] = @[], nargs = -1, argExprs: seq[string] = @[], recvLit = false): string =
   ## the result type of calling `name`, with `recv` as its first argument when that is known (and `nargs`
@@ -764,6 +781,10 @@ proc nxCallType*(f: NxFile, sc: NxScope, locals: seq[NxSym], name: string, recv:
     if s.kind in NxRoutineKinds and nxNorm(s.name) == nxNorm(name) and s.line <= line:
       let lr = nxAsyncResult(s.ret, s.pragmas)
       if lr.len > 0 and lr notin ["auto", "untyped", "typed"] and s.generics.len == 0: return nxStripMods(lr)
+      if s.kind == nxTemplate and lr in ["untyped", "typed"]:
+        # (a template of the routine's own, `template s: untyped = r.sym`: what its body gives, there)
+        let t = nxTemplateBodyType(f, sc, locals[0 ..< k], s, @[recv], s.line, depth)
+        if t.len > 0: return t
       break
   var best: NxRef
   var bestScore = -1
@@ -906,6 +927,13 @@ proc nxCallType*(f: NxFile, sc: NxScope, locals: seq[NxSym], name: string, recv:
       let ri = nxEnclosing(f, line)
       if ri >= 0 and nxRawRaises(f.syms[ri].pragmas):
         return "InternalRaisesFuture[" & nxTypeArgs(rt)[0] & ", InternalRaisesFutureRaises]"
+  if rt in ["untyped", "typed"] and s.kind == nxTemplate and best.file != nil:
+    # a template whose body is one expression: what that gives, where it is declared, its parameters the arguments'
+    var ats = @[recv]
+    for k in 0 ..< min(argExprs.len, max(0, s.params.len - 1)):
+      ats.add nxTypeOfExpr(f, sc, locals, argExprs[k], line, depth + 1).typ
+    let sc2 = if best.file == sc.own: sc else: nxScope(best.file)
+    return nxTemplateBodyType(best.file, sc2, @[], s, ats, s.line, depth)
   if rt in ["auto", "untyped", "typed", "typedesc"]: return ""
   if nxIsGenericName(rt, s.generics):
     # unbound `T`: the receiver's element is the usual answer (seq[T].pop)
@@ -1231,6 +1259,10 @@ proc nxTypeOfName*(f: NxFile, sc: NxScope, locals: seq[NxSym], name: string, lin
   for i in countdown(locals.high, 0):
     let s = locals[i]
     if nxNorm(s.name) == nxNorm(name) and s.line <= line:
+      if s.kind == nxTemplate and s.params.len == 0 and s.ret in ["untyped", "typed"]:
+        # (`template s: untyped = r.sym`, used as a value: what its body gives)
+        let t = nxTemplateBodyType(f, sc, locals[0 ..< i], s, @[], s.line, depth)
+        if t.len > 0: return NxVal(typ: t)
       if s.kind in NxRoutineKinds: return NxVal(routine: name)
       if s.kind == nxParam and nxStripMods(s.typ) in ["auto", "any", "untyped", "typed"]:
         if s.typ in ["untyped", "typed"]:

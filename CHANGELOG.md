@@ -1,6 +1,40 @@
 # ned changelog
 
-The newest release is described in the [README](README.md#whats-new-in-650). Older releases:
+The newest release is described in the [README](README.md#whats-new-in-651). Older releases:
+
+## What's new in 6.50
+
+**A problem, recorded and played back.** `ned --record bug.rec FILE` records a session — every key and mouse
+event, what the terminal answers, its size, and the text of the files you open — and `ned --replay bug.rec` plays
+it back on another machine, key by key, with the same pauses, at the same size and with the same settings. A
+problem seen on a phone can be seen again where it gets fixed, with no screenshot to guess from. The recording is a
+text file that holds everything you typed, so read it before you send it; your settings go in without their API keys
+and tokens. A replay runs in a folder of its own, and on Linux is kept inside it with no network, because it types
+again what was typed, in ned's terminal too ([Troubleshooting](docs/guide/troubleshooting.md)).
+
+**Safe mode.** `ned --safe` starts with ned's default settings, no plugins and nothing kept from before, and leaves
+your own settings and state as they are: the quick way to tell whether a problem is ned's, a setting's or a
+plugin's.
+
+**No nimsuggest with Nim 2.4.** For what its own engine cannot work out — the type of a `let` a macro makes, which
+overload a call picks — ned started nimsuggest for a moment: after a pause in your typing, and on a hover with no
+answer. Each run read the whole project into memory again, hundreds of megabytes, and on a phone that could close
+Termux. With Nim 2.4 or newer the compiler's own reading of the text comes with its checks, and ned takes these
+answers from it: nimsuggest is not started unless you turn it on (`nim.nimsuggest`). The hover of a name a macro
+makes shows the routine as the compiler declares it. With an older Nim nothing changes
+([Nim IDE](docs/guide/nim.md)).
+
+**Find a routine by its signature.** *Nim: find a routine by its signature…* is for when you know the types in your
+hands and the type you want, but not the name: `(string, char) -> seq[string]` finds `split`, `-> JsonNode`
+everything that gives one. The types go in any order, a `seq` fits an `openArray`, a generic's `T` fits anything;
+what the file can call comes first, then routines of modules it does not import yet.
+
+**Types, closer to the compiler's.** Three places where what ned showed was not what the compiler has:
+- after a save, a `let` of a `ref object` type showed `: ref Node:ObjectType`, the compiler's inner name: it shows
+  `: Node`; and `: Stream` stays `Stream`, not `ref StreamObj`;
+- a long array or table constant (over 200 characters) had the wrong type — `array[2, int]` for 81 numbers, none
+  for a table: the length and the type are right, and its hover says how many items it leaves out;
+- completion after a string literal offers `fmt` and the other routines that take a `static string`.
 
 ## What's new in 6.49
 

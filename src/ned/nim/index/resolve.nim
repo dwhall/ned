@@ -11,7 +11,6 @@ func nxWordAt*(text: string, col: int): (int, int) =
   (a, e)
 
 proc nxSymAt*(f: NxFile, line, col: int): int
-proc nxFileLines*(path: string): seq[string]
 proc nxLexRuns*(line: string, st: var NxLexState, ops: bool): seq[(int, int)]
 
 func nxIsOpName*(n: string): bool =

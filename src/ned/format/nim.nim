@@ -2760,6 +2760,7 @@ proc fNphLayout*(toks0: seq[FTok], depth: int, exprLine = false, declLike = fals
       elif not x.identDefs(1): return
     of "type":
       # `type X = T` (a section of one): as its member `X = T`
+      if n < 3: return                 # (`type X` and nothing after it, in a broken file: left as it is)
       x.xPut(0)
       if toks[1].kind != fkIdent or toks[2].kind == fkComma or not x.identDefs(1, typeVal = true): return
     of "bind", "mixin":

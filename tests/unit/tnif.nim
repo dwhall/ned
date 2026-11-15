@@ -77,6 +77,25 @@ suite "Nim 2.4's NIF (nim nif)":
     check letAt == (14, 4)          # (`let s1 = show(3)` on line 15: s1 at column 4)
     check threeAt == (14, 14)       # (the 3 in show(3))
 
+  test "a big NIF in pieces: the same atoms at the same places, each piece whole (6.51)":
+    # (nifParse's chunks: a statement at the top, or at the top of an included file, ends a piece; the statements
+    # still open come first in each, renumbered — so a NIF of 20 MB takes the memory of its biggest statement)
+    let whole = nifParse(Nif24.splitLines, before = true)
+    var atoms: seq[(string, int, int, string)]
+    for n in whole:
+      if n.tag.len == 0: atoms.add (n.atom, n.sline, n.scol, n.file)
+    var got: seq[(string, int, int, string)]
+    var pieces = 0
+    var whole0 = true
+    discard nifParse(Nif24.splitLines, before = true, chunk = 1, onChunk = proc(ns: seq[NifNode]) =
+      inc pieces
+      for i, n in ns:
+        if n.parent >= i or (n.parent >= 0 and ns[n.parent].tag.len == 0): whole0 = false
+        if n.tag.len == 0: got.add (n.atom, n.sline, n.scol, n.file))
+    check pieces > 2
+    check whole0
+    check got == atoms
+
   test "what a macro made, written back as Nim":
     let ns = nifParse(Nif24.splitLines, before = true)
     let top = nifTopStatements(ns)

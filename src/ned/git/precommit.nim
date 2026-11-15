@@ -79,8 +79,57 @@ proc precommitTests(files: seq[string], then: proc(failed: seq[(string, seq[stri
       next())
   next()
 
+proc stagedSecrets(root: string, all: bool): seq[(string, int, string)] =
+  ## what looks like a secret in what the commit takes (git.secretsCheck): a file of secrets by its name (.env, a
+  ## private key …), or a line it adds with an API key, a token, a password … in it (core/secrets: the shapes the
+  ## assistant's redaction knows) — (the file, its line from 0 or -1 for the whole file, what it is)
+  let (ok, o, _) = runFilter((if all: "git diff HEAD" else: "git diff --cached") & " -U0 --no-color --no-ext-diff 2>/dev/null",
+                             "", root, 10000)
+  if not ok: return
+  var file = ""
+  var line = 0
+  for l in o.splitLines:
+    if l.startsWith("+++ "):
+      file = if l.startsWith("+++ b/"): l[6 .. ^1] else: ""
+      if file.len > 0 and isSecretFile(root / file, root = root): result.add (file, -1, "a file of secrets")
+    elif l.startsWith("@@"):
+      # (@@ -a,b +c,d @@: the added lines from c)
+      let plus = l.find('+', 2)
+      if plus > 0:
+        var e = plus + 1
+        while e < l.len and l[e] in Digits: inc e
+        line = (try: parseInt(l[plus + 1 ..< e]) - 1 except ValueError: 0)
+    elif l.startsWith("+") and file.len > 0:
+      if l.len < 4000:
+        for s in secFind(l[1 .. ^1]):
+          result.add (file, line, s.kind)
+          break
+      inc line
+    if result.len >= 20: return
+
+proc precommitOther(root: string, all: bool, commit: proc())
+
 proc precommitChecks(root: string, all: bool, commit: proc()) =
-  ## the checks, then `commit` — or what failed, and the choice
+  ## the checks, then `commit` — or what failed, and the choice. The first, git.secretsCheck: no secret goes into the
+  ## history — what looks like one stops the commit, with (o)pen it, (c)ommit anyway, (x) cancel; then the others
+  ## (git.checksBeforeCommit: precommitOther)
+  let found = if sBool("git.secretsCheck") and root.len > 0: stagedSecrets(root, all) else: @[]
+  if found.len == 0:
+    precommitOther(root, all, commit)
+    return
+  var what: seq[string]
+  for (f, l, k) in found[0 ..< min(3, found.len)]:
+    what.add (if l < 0: f & " (" & k & ")" else: f & ":" & $(l + 1) & " (" & k & ")")
+  let (f0, l0, _) = found[0]
+  askConfirm("A secret in what you commit: " & what.join(", ") & (if found.len > 3: " …" else: "") &
+             " — once pushed it stays in the history. (o)pen it, (c)ommit anyway, (x) cancel", proc(c: char) =
+    if c == 'c': precommitOther(root, all, commit)
+    elif c == 'o':
+      let nb = openFile(root / f0)
+      if nb != nil and l0 >= 0: nb.centerOn(nb.clampPos(Pos(line: l0, col: 0))))
+
+proc precommitOther(root: string, all: bool, commit: proc()) =
+  ## the checks of git.checksBeforeCommit (formatted, the tests passing), then `commit` — or what failed, and the choice
   if cfgCommitChecks == "off" or root.len == 0:
     commit()
     return

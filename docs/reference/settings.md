@@ -282,7 +282,7 @@ Every setting ned has, its default and what it does — made by `ned --doc-setti
 | `terminal.editorEnv` | `true` | In ned's terminal, ned is git's editor — GIT_EDITOR, EDITOR and VISUAL, each where you have not set it: `git commit` opens its message in a tab of this ned and waits until you close it (`ned FILE` in ned's terminal opens the file here either way; ned --new starts another ned) |
 | `terminal.cwd` | `"project"` | Where new terminals start — one of: project, file |
 | `terminal.keepRunning` | `true` | Terminals keep running when ned quits or its window closes: the next ned in the same folder takes them back, with what they showed. Kill terminal ends one; Terminal: kept terminals… lists them all. Not on Windows, nor REPLs or a remote folder's terminal |
-| `terminal.shellIntegration` | `true` | bash, zsh and fish mark each command (OSC 133): Ctrl+↑/↓ jumps between them, failed ones are marked, and a command's output can be copied or the command run again |
+| `terminal.shellIntegration` | `true` | the shell marks each command (OSC 133) — bash, zsh, fish, sh, dash, ash, ksh, mksh, yash, elvish, xonsh, PowerShell and cmd.exe through ned, nushell by itself: Ctrl+↑/↓ jumps between them, failed ones are marked, and a command's output can be copied or the command run again |
 
 ## Git
 
@@ -292,6 +292,8 @@ Every setting ned has, its default and what it does — made by `ned --doc-setti
 | `git.autoRefresh` | `true` | Refresh the git panel periodically while it is open |
 | `git.untrackedFiles` | `"folders"` | New files in a new folder: folders = the folder as one line (with how many files it holds — git does not walk a folder of thousands) · all = every file on its own line — one of: folders, all |
 | `git.inlineBlame` | `false` | Show who last changed the current line, and when, at its end |
+| `git.releaseKey` | `""` | An SSH key (its private file: ~/.ssh/release) that signs the SHA256SUMS of Git: make a GitHub release… — in the namespace <repository's folder>-release (ned's own: ned-release, what ned --update checks); ssh-keygen asks for its passphrase in the terminal |
+| `git.secretsCheck` | `true` | Before a commit: an API key, a token, a password or a file of secrets (.env, a private key) in what it takes stops it — open it, or commit anyway (once pushed, a secret stays in the history) |
 | `git.checksBeforeCommit` | `"both"` | Before a commit: format = the files it takes are formatted (ned's own formatters, on what is staged; only with editor.formatOnSave on, for the languages it formats), tests = the tests that cover them pass (in a trusted folder) · both · off. One that fails stops the commit and says why, with a way to fix it or to commit anyway — one of: both, format, tests, off |
 
 ## C
@@ -337,6 +339,7 @@ Every setting ned has, its default and what it does — made by `ned --doc-setti
 | `ai.model` | `""` | Model id (empty = provider default; palette › AI: choose model lists them) |
 | `ai.apiKey` | `""` | API key. Prefer an environment variable — see ai.apiKeyEnv |
 | `ai.apiKeyEnv` | `""` | Environment variable holding the key (empty = ANTHROPIC_API_KEY, OPENAI_API_KEY, …) |
+| `ai.apiKeyCommand` | `""` | A command that prints the API key — a password manager or the system's keyring: pass show anthropic, secret-tool lookup service anthropic, security find-generic-password -w -s anthropic (asked once a session, the key kept in memory only; ai.apiKey, when set, comes first) |
 | `ai.baseUrl` | `""` | API base URL (empty = provider default; e.g. http://localhost:11434 for Ollama) |
 | `ai.maxTokens` | `8192` | Maximum tokens per reply |
 | `ai.openaiApi` | `"auto"` | OpenAI endpoint: chat completions, the Responses API, or auto (switches by itself when a model needs it) — one of: auto, chat, responses |
@@ -344,6 +347,7 @@ Every setting ned has, its default and what it does — made by `ned --doc-setti
 | `ai.localUrl` | `"http://127.0.0.1:11434"` | Where Ollama listens (AI › on this device, offline) |
 | `ai.agent` | `true` | Agent mode: the assistant may read, search, edit files and run commands |
 | `ai.autoApprove` | `"reads"` | Which agent actions run without asking — one of: none, reads, edits, all |
+| `ai.sandbox` | `"on"` | Linux: the commands the assistant and ACP agents run through ned are kept in a sandbox (Landlock) — they change files only in the project and the caches, have no network, and get none of the environment's secrets; net: the network is allowed; off: they run as you — one of: on, net, off |
 | `ai.maxSteps` | `30` | Maximum tool steps per request |
 | `ai.checkEdits` | `true` | Check the files the assistant edits (nim check; py_compile, node --check, cargo check …) and tell it what is wrong, so it fixes its own mistakes before it says it is done |
 | `ai.includeFile` | `true` | Send the current file (or selection) with each message |
@@ -356,7 +360,8 @@ Every setting ned has, its default and what it does — made by `ned --doc-setti
 | `ai.nextEdit` | `false` | Next-edit suggestions from AI: when an edit has no repeat in the file, the quick model is asked what edit follows from it (shown as → … ⇥ (AI), Tab takes it) — sends the code around it |
 | `ai.checkSuggestions` | `true` | Nim: an inline suggestion that uses a name that does not exist here (a proc, a field the type does not have) is not shown — ned's engine checks it first |
 | `ai.inlineCompletionModel` | `""` | Model for inline suggestions (empty = a fast default for the provider) |
-| `ai.mcpServers` | `{}` | MCP servers whose tools the agent may use (each call asks first, unless ai.autoApprove is all): {"github": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"], "env": {"GITHUB_TOKEN": "…"}}} — palette › AI: MCP servers |
+| `ai.inlineCompletionFim` | `"auto"` | Inline suggestions by fill-in-the-middle — the code before and after the cursor, the model's own way of writing what goes between: faster and closer than a chat model. auto: with Mistral (Codestral), DeepSeek and Ollama (a code model: qwen2.5-coder, deepseek-coder …); off: always ask the chat model — one of: auto, off |
+| `ai.mcpServers` | `{}` | MCP servers whose tools the agent may use (each call asks first, unless ai.autoApprove is all): {"github": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"], "env": {"GITHUB_TOKEN": "…"}}}, or one on the web: {"github": {"url": "https://api.githubcopilot.com/mcp/", "headers": {"Authorization": "Bearer ${GITHUB_TOKEN}"}}} (${NAME}: an environment variable) — palette › AI: MCP servers |
 | `ai.agentServer` | `""` | The agent the AI dock talks to instead of ned's own assistant: one of ai.agentServers (empty = ned's own) — palette › AI: choose agent… |
 | `ai.agentServers` | `{}` | Agents that are programs of their own, spoken to with the Agent Client Protocol (ACP): {"claude": {"command": "npx", "args": ["-y", "@agentclientprotocol/claude-agent-acp"]}} — "env" for their variables, "protocol": 2 for ACP's draft version 2, "mcpServers": false to keep ai.mcpServers to ned |
 | `ai.fastModel` | `""` | A quicker, cheaper model to switch to (the ⚡ button in the assistant, or palette › AI: fast / smart model) — e.g. claude-haiku-5-5 or gpt-5-mini |

@@ -204,6 +204,8 @@ proc anthropicBody(): JsonNode =
     var tools = newJArray()
     for (n, d, s) in AiTools:
       tools.add %*{"name": n, "description": d, "input_schema": parseJson(s)}
+    if engineToolsOn():
+      for (n, d, s) in EngineTools: tools.add %*{"name": n, "description": d, "input_schema": parseJson(s)}
     for (n, d, sc) in mcpTools(): tools.add %*{"name": n, "description": d, "input_schema": sc}
     if cache: tools[^1]["cache_control"] = %*{"type": "ephemeral"}
     result["tools"] = tools

@@ -123,7 +123,7 @@ jobs:
       - name: The tools the tests use
         run: |
           sudo apt-get update
-          sudo apt-get install -y tmux clangd gdb lldb zsh fish hunspell-en-us openssh-server
+          sudo apt-get install -y tmux clangd gdb lldb zsh fish ksh mksh yash elvish hunspell-en-us openssh-server
           npm install -g vscode-langservers-extracted
           # sql-language-server: what npm gives it today does not start (vscode-languageserver-protocol 3.18 no longer
           # has the file it loads) — installed in a folder of its own, with that library held at 3.17

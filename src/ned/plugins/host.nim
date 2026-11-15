@@ -1509,6 +1509,7 @@ proc plugApi(h: PlugHost, j: JsonNode) =
       return
   case fn
   of "shellAsync", "terminal": need(ppShell)
+  of "askAi": need(ppAi)
   of "clipboard", "setClipboard": need(ppClipboard)
   of "runCommand":
     if plugCommandRuns(a{"name"}.getStr): need(ppShell)
@@ -1622,6 +1623,25 @@ proc plugApi(h: PlugHost, j: JsonNode) =
         if hh.state == "ready" and hh in plugHosts:
           discard plugSendCall(hh, cb, pl, %*{"output": j.output.strip(leading = false, chars = {'\n'}),
                                             "code": j.code}, nil))
+      answer(newJNull())
+    of "askAi":
+      # (the assistant asked for a plugin: its answer, or what went wrong, to the plugin's callback)
+      let cb = a{"cb"}.getInt(-1)
+      let hh = h
+      let pl = plugin
+      if cb < 0: (answer(nil, "no callback"); return)
+      proc reply(ans, err: string) =
+        ## the answer to the plugin's callback, while its host still runs
+        if hh.state == "ready" and hh in plugHosts:
+          discard plugSendCall(hh, cb, pl, %*{"answer": ans, "error": err}, nil)
+      let sys = if a{"system"}.getStr.len > 0: a{"system"}.getStr
+                else: "You answer a request from the ned editor's plugin \"" & pl & "\". Answer briefly, with only " &
+                      "what was asked for — no greeting, no explanation unless asked."
+      let j = aiFastAsk(sys, redactSecrets(a{"prompt"}.getStr, aiSecretTab), max(16, min(8000, a{"maxTokens"}.getInt(1000))),
+                        proc(t: string) = reply(t, ""), nil, (if a{"smart"}.getBool: aiModel() else: ""), 60,
+                        proc(why: string) = reply("", why))
+      if j == nil: reply("", "no AI provider is set up (palette › AI: settings…)")
+      plugLogAdd(pl, "asked the assistant (" & $a{"prompt"}.getStr.len & " characters)")
       answer(newJNull())
     of "markSaved":
       needBuf()

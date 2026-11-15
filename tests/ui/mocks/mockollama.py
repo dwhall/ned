@@ -25,6 +25,14 @@ class H(BaseHTTPRequestHandler):
             models.append({"name": body.get("model", "x"), "size": 1000000000})
             self.close_connection = True
             return
+        if self.path.startswith('/api/generate'):
+            # (fill in the middle: a code model given the text after the cursor too; another model refuses it)
+            if body.get('model') != 'coder' or 'suffix' not in body:
+                b2 = json.dumps({"error": "model does not support insert"}).encode()
+                self.send_response(400); self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(b2))); self.end_headers(); self.wfile.write(b2); return
+            with open(sys.argv[2] if len(sys.argv) > 2 else '/dev/null', 'a') as f: f.write(json.dumps(body) + '\n')
+            return self.send_json({"response": ' "fim-651"', "done": True})
         if self.path.endswith('/chat/completions'):
             if body.get('stream'):
                 self.send_response(200); self.send_header('Content-Type', 'text/event-stream')

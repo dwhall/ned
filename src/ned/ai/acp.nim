@@ -62,7 +62,8 @@ const
   AcpPresets = [                   # agents to add with one tap (AI: choose agent…)
     ("claude", "Claude Agent", @["npx", "-y", "@agentclientprotocol/claude-agent-acp"]),
     ("codex", "Codex", @["npx", "-y", "@agentclientprotocol/codex-acp"]),
-    ("gemini", "Gemini CLI", @["npx", "-y", "@google/gemini-cli", "--acp"])]
+    ("gemini", "Gemini CLI", @["npx", "-y", "@google/gemini-cli", "--acp"]),
+    ("copilot", "GitHub Copilot", @["npx", "-y", "@github/copilot", "--acp"])]
 
 iterator acpPairs(n: JsonNode): (string, JsonNode) =
   ## the key and the value of each entry of an object (none for anything else)
@@ -298,10 +299,20 @@ proc acpEnsure(): AcpAgent =
 # ── the session: one conversation with the agent ──
 
 proc acpMcpServers(a: AcpAgent): JsonNode =
-  ## ned's MCP servers (ai.mcpServers), handed to the agent for its own use — unless its entry says "mcpServers": false
+  ## ned's MCP servers (ai.mcpServers, and its own Nim engine's, nedls --mcp), handed to the agent for its own use —
+  ## unless its entry says "mcpServers": false
   result = newJArray()
   let spec = acpSpecOf(a.name)
   if spec != nil and spec{"mcpServers"} != nil and not spec{"mcpServers"}.getBool(true): return
+  # (ned's own Nim engine, nedls --mcp, in a Nim project: where a name is declared, its uses, types, routines by their
+  #  signature — what ned's own assistant asks it)
+  let nedls = block:
+    let here = getAppFilename().parentDir / "nedls"
+    if fileExists(here): here else: findExe("nedls")
+  if nedls.len > 0 and engineToolsOn():
+    var s = %*{"name": "ned", "command": nedls, "args": ["--mcp", "--root", rootDir], "env": []}
+    if a.proto == 2: s["type"] = %"stdio"
+    result.add s
   let all = settingNode("ai.mcpServers")
   if all == nil or all.kind != JObject: return
   for name, sp in all:
@@ -880,7 +891,7 @@ proc acpTermCreate(a: AcpAgent, id, p: JsonNode) =
     if e{"name"}.getStr.len > 0: envs.add quoteShell(e{"name"}.getStr & "=" & e{"value"}.getStr) & " "
   if envs.len > 0: line = "env " & envs & line
   let cwd = if p{"cwd"}.getStr.len > 0: p{"cwd"}.getStr else: rootDir
-  let j = startJob(jkTool, line, cwd)
+  let j = startJob(jkTool, aiSandboxed(line)[0], cwd)       # (in ned's sandbox, as the assistant's own commands)
   if j == nil:
     a.acpReplyErr(id, -32603, "could not start " & p{"command"}.getStr)
     return

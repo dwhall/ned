@@ -442,7 +442,7 @@ proc tsTermCmds() =
       es.add TsEntry(label: c.text, detail: t.name & " " & st, act: tsRunInTermAct(ti, c.text),
                      pv: tsText(t.termCmdOutput(ci), "Text"))
   if es.len == 0:
-    info("No commands seen in the terminals yet (bash, zsh, fish with terminal.shellIntegration)")
+    info("No commands seen in the terminals yet (terminal.shellIntegration)")
     return
   tsOpen("Terminal: commands run — Enter runs one again", es, tsTermCmds)
 

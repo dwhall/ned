@@ -171,9 +171,22 @@ proc aiKeyEnvName(): string =
   of "mistral": "MISTRAL_API_KEY"
   else: "AI_API_KEY"
 
+var aiKeyFromCmd = ("", "")       # (ai.apiKeyCommand, the key it printed: asked once a session for each command)
+
 proc aiKey(): string =
-  ## the API key: the one in the settings, else the one in the environment variable
-  if cfgAiKey.len > 0: cfgAiKey else: getEnv(aiKeyEnvName())
+  ## the API key: the one in the settings, else what ai.apiKeyCommand prints (a password manager, the system's
+  ## keyring — asked once, then kept in memory only), else the one in the environment variable
+  if cfgAiKey.len > 0: return cfgAiKey
+  let c = sStr("ai.apiKeyCommand")
+  if c.len > 0:
+    if aiKeyFromCmd[0] != c:
+      let (ok, o, e) = runFilter(c, "", getHomeDir(), 10000)
+      let key = if ok: o.strip else: ""
+      aiKeyFromCmd = (c, if key.len > 0 and '\n' notin key: key else: "")
+      if aiKeyFromCmd[1].len == 0:
+        warn("ai.apiKeyCommand gave no key" & (if e.strip.len > 0: ": " & truncTo(e.strip, 80) else: ""))
+    if aiKeyFromCmd[1].len > 0: return aiKeyFromCmd[1]
+  getEnv(aiKeyEnvName())
 
 proc aiModel(): string =
   ## the model to ask: the fast model while fast mode is on and one is set, else ai.model, else the provider's default

@@ -6347,10 +6347,12 @@ def t_613_terminal_answers():
     a1 = screen_ansi().split('\n')[3][:40]
     check('613 light/dark: "theme": "auto" follows the terminal when it switches (mode 2031)', a0 != a1, repr((a0, a1)))
     raw_in(b'\x1bP1+r536d756c78=5c45\x1b\\')    # XTGETTCAP: Smulx — curly underlines
+    raw_in(b'\x1bP>|kitty(0.39.1)\x1b\\')         # (6.51) XTVERSION: its name, which ssh does not pass on
     palette('Check setup'); time.sleep(1)
     s = screen()
     check('613 check setup: what the terminal answered', 'kitty keyboard protocol' in s and 'grapheme' in s and
           'curly underlines' in s, s)
+    check('651 check setup: the terminal\'s own name (XTVERSION)', 'kitty(0.39.1)' in s, s)
     keys('Escape'); time.sleep(0.2)
     open(W + '/e.txt', 'w').write('changed outside\n')
     raw_in(b'\x1b[O'); raw_in(b'\x1b[I')        # (away and back: what changed is looked at at once)
@@ -12098,6 +12100,244 @@ def t_650_signature_search():
     keys('Enter'); time.sleep(0.6)
     check('650 by signature: Enter goes to the declaration', re.search(r'Ln 2, Col', screen()), screen())
 
+def t_651_shells():
+    # 6.51: shell integration for the shells that mark only their prompts (sh, dash, ash, ksh, mksh, yash — the Enter
+    # ned sends is where a command starts), and for elvish and xonsh, each with its own startup file still read
+    home = TMP + '/fakehome651'
+    shutil.rmtree(home, ignore_errors=True); os.makedirs(home + '/.config/elvish')
+    for f in ['.kshrc', '.mkshrc', '.yashrc', 'env.sh']:
+        open(home + '/' + f, 'w').write("hi() { echo hello-from-rc; }\nPS1='psh$ '\n")
+    open(home + '/.config/elvish/rc.elv', 'w').write("fn hi { echo hello-from-rc }\n")
+    # (xonsh 0.14 on Python 3.12 warns at each prompt it draws: the test's own rc keeps that out of the screen)
+    open(home + '/.xonshrc', 'w').write("import warnings\nwarnings.simplefilter('ignore')\naliases['hi'] = 'echo hello-from-rc'\n")
+    shells = [(which(s), e) for s, e in [('dash', 'ENV=' + home + '/env.sh'), ('ksh', ''), ('mksh', ''), ('yash', ''),
+                                         ('elvish', ''), ('xonsh', '')] if which(s)]
+    if not shells: need('dash')
+    for sh_, extra in shells:
+        nm = os.path.basename(sh_)
+        setup({"terminal.shell": sh_})
+        if nm == 'elvish':        # (the tests' XDG_CONFIG_HOME is where elvish looks)
+            os.makedirs(CFG + '/elvish', exist_ok=True)
+            shutil.copy(home + '/.config/elvish/rc.elv', CFG + '/elvish/rc.elv')
+        start('src/demo.nim', w=120, h=34, env_extra=('HOME=' + home + ' ' + extra).strip())
+        time.sleep(0.5)
+        keys('C-\\'); time.sleep(3 if nm == 'xonsh' else 1.5)
+        text('hi'); keys('Enter'); ok = wait_for('hello-from-rc', 10)
+        check('651 %s: its own startup file is read' % nm, ok, screen())
+        text('fail oops' if nm == 'elvish' else 'false'); keys('Enter'); ok = wait_for('exit 1', 8); time.sleep(0.3)
+        s = screen()
+        check('651 %s: the header shows a failed command' % nm, ok and 'exit 1' in s.split('TERMINAL')[1].splitlines()[0], s)
+        time.sleep(1.5 if nm == 'xonsh' else 0)    # (xonsh, in Python, takes a moment to draw its prompt)
+        text('echo marked-651'); keys('Enter'); wait_for(r'✓|ok \d', 5); time.sleep(0.5)
+        s = screen()
+        marks = [l for l in s.split('TERMINAL')[1].splitlines() if l.startswith('● ')]
+        check('651 %s: each command is marked in the gutter' % nm, len(marks) >= 3, s)
+        # shortcut: xonsh 0.14 on Python 3.12 (Ubuntu 24.04's) prints its own warnings under the prompt it drew, and
+        # draws it again lower down at the first key: the command line as typed is checked for the other shells
+        if nm == 'xonsh': continue
+        keys('C-Up'); time.sleep(0.4)
+        check('651 %s: Ctrl+↑ goes to the last command, as typed' % nm, '$ echo marked-651' in screen(), screen())
+        keys('Escape'); time.sleep(0.2)
+        keys('Enter'); time.sleep(0.5)
+        keys('C-\\'); time.sleep(0.3)
+        palette('Terminal: commands'); time.sleep(0.5)
+        s = screen()
+        check('651 %s: an empty Enter is not a command' % nm, s.count('marked-651') >= 1 and not re.search(r'[●✓✗+x] +\s*\d+ s ago', s), s)
+        keys('Escape')
+    shutil.rmtree(home, ignore_errors=True)
+    shutil.rmtree(CFG + '/elvish', ignore_errors=True)
+
+def t_651_terminal_folder_links():
+    # 6.51: the folder the shell says it is in (OSC 7) — a split starts there; a compiler's error in the terminal opens
+    # with Ctrl+click and from the right-click menu; VS Code's marks (OSC 633) with the command line they give
+    setup({"terminal.shell": "/bin/bash"})
+    os.makedirs(W + '/deep/er', exist_ok=True)
+    start('src/demo.nim', w=130, h=34, env_extra='HOME=' + TMP); time.sleep(0.5)
+    keys('C-\\'); time.sleep(1.5)
+    text('cd deep/er && printf "\\033]7;file://%s%s\\007" "$HOSTNAME" "$PWD"'); keys('Enter'); time.sleep(0.5)
+    keys('C-\\'); time.sleep(0.3)
+    palette('Terminal: split'); time.sleep(1.5)
+    text('pwd'); keys('Enter'); ok = wait_for(r'/deep/er *\n', 5)
+    check('651 a split starts in the folder the shell said (OSC 7)', ok, screen())
+    text('cd ' + W + ' && echo "src/demo.nim(3, 1) Error: made up"'); keys('Enter'); time.sleep(0.6)
+    pos = None
+    for i, l in enumerate(screen().split('\n')):
+        k = l.find('Error: made up')
+        if k >= 0 and 'echo' not in l: pos = (k - 5 + 1, i + 1)
+    check('651 the error is in the terminal', pos is not None, screen())
+    if pos:
+        tm('send-keys', '-t', 'f', '-l', '\x1b[<16;%d;%dM' % pos); time.sleep(0.05)
+        tm('send-keys', '-t', 'f', '-l', '\x1b[<16;%d;%dm' % pos); time.sleep(0.8)
+        check('651 Ctrl+click opens the place the line names', re.search(r'Ln 3, Col 1', screen()), screen())
+        tm('send-keys', '-t', 'f', '-l', '\x1b[<2;%d;%dM' % pos); time.sleep(0.05)
+        tm('send-keys', '-t', 'f', '-l', '\x1b[<2;%d;%dm' % pos); time.sleep(0.5)
+        check('651 … and the right-click menu offers it', 'Open src/demo.nim:3' in screen(), screen())
+        keys('Escape'); time.sleep(0.2)
+        click(*pos)
+    text("printf '\\033]633;A\\007$ \\033]633;B\\007'; printf '\\033]633;E;echo from\\\\x3b633;n1\\007\\033]633;C\\007'; echo six33; printf '\\033]633;D;0\\007'")
+    keys('Enter'); time.sleep(0.8)
+    keys('C-\\'); time.sleep(0.3)
+    palette('Terminal: commands'); time.sleep(0.6)
+    check('651 OSC 633: the command line it gives', 'echo from;633' in screen(), screen())
+    keys('Escape')
+
+def t_651_completions():
+    # 6.51: ned --completions bash|zsh|fish — Tab completes ned's options from its own --help
+    for sh_ in ['bash', 'zsh', 'fish']:
+        if not which(sh_): continue
+        r = subprocess.run([BIN, '--completions', sh_], capture_output=True, text=True)
+        check('651 completions: %s script' % sh_, r.returncode == 0 and 'ned' in r.stdout, r.stdout + r.stderr)
+    bindir = TMP + '/compl651'
+    os.makedirs(bindir, exist_ok=True)
+    try: os.remove(bindir + '/ned')
+    except OSError: pass
+    os.symlink(BIN, bindir + '/ned')
+    script = subprocess.run([BIN, '--completions', 'bash'], capture_output=True, text=True).stdout
+    r = subprocess.run(['bash', '-c', script + '\nCOMP_WORDS=(ned --rec); COMP_CWORD=1; _ned; echo "${COMPREPLY[@]}"'],
+                       capture_output=True, text=True, env=dict(os.environ, PATH=bindir + ':' + os.environ['PATH']))
+    check('651 completions: bash completes --rec to --record', r.stdout.strip() == '--record', r.stdout + r.stderr)
+    if which('fish'):
+        open(bindir + '/ned.fish', 'w').write(subprocess.run([BIN, '--completions', 'fish'], capture_output=True, text=True).stdout)
+        r = subprocess.run(['fish', '-c', 'source ' + bindir + '/ned.fish; complete -C "ned --repl"'], capture_output=True,
+                           text=True, env=dict(os.environ, PATH=bindir + ':' + os.environ['PATH']))
+        check('651 completions: fish completes --repl to --replay', r.stdout.split()[:1] == ['--replay'], r.stdout + r.stderr)
+    if which('zsh'):
+        open(bindir + '/_ned', 'w').write(subprocess.run([BIN, '--completions', 'zsh'], capture_output=True, text=True).stdout)
+        r = subprocess.run(['zsh', '-c', 'zmodload zsh/zpty; fpath=(' + bindir + ' $fpath); autoload -Uz compinit; compinit -u; '
+                            'source ' + bindir + '/_ned 2>&1 | head -3; whence -w _ned'], capture_output=True, text=True,
+                           env=dict(os.environ, PATH=bindir + ':' + os.environ['PATH']))
+        check('651 completions: zsh loads the function', '_ned' in r.stdout, r.stdout + r.stderr)
+
+def t_651_agent_engine_sandbox():
+    # 6.51: the assistant asks ned's Nim engine (nim_outline) instead of reading the file; its commands run in the
+    # sandbox (ai.sandbox): a file in the project is made, one in the home folder is not
+    setup({"ai.agent": True, "ai.autoApprove": "all", "ai.checkEdits": False})
+    home = TMP + '/home651'
+    shutil.rmtree(home, ignore_errors=True); os.makedirs(home)
+    start('src/demo/utils.nim', w=130, h=40, env_extra='HOME=' + home); time.sleep(0.6)
+    keys('M-c'); time.sleep(0.4); text('ZQOUTLINE what is in utils'); keys('Enter')
+    ok = wait_for('Tool said', 20); time.sleep(0.5)
+    s = screen()
+    check('651 the agent has the engine\'s outline tool', ok and 'proc shout' in s, s)
+    keys('Escape'); time.sleep(0.2)
+    keys('M-c'); time.sleep(0.4); text('ZQSANDBOX make two files'); keys('Enter')
+    ok = wait_for('Tool said', 20); time.sleep(0.5)
+    check('651 the agent\'s command ran', ok and os.path.exists(W + '/zq-inside.txt'), screen())
+    landlock = subprocess.run([BIN, '--sandbox', '--require', '--', 'true'], capture_output=True).returncode == 0
+    if landlock:
+        check('651 … in the sandbox: nothing written outside the project', not os.path.exists(home + '/zq-outside.txt'),
+              str(os.listdir(home)))
+    shutil.rmtree(home, ignore_errors=True)
+
+def t_651_nedls_mcp():
+    # 6.51: nedls --mcp — the Nim engine as an MCP server: initialize, the tools, a definition and an outline
+    setup()
+    nedls = os.path.join(os.path.dirname(BIN), 'nedls')
+    if not os.path.exists(nedls): need('nedls')
+    msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+             "clientInfo": {"name": "t", "version": "1"}}},
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "nim_outline", "arguments": {"path": "src/demo/utils.nim"}}},
+            {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "nim_definition",
+             "arguments": {"path": "src/demo.nim", "line": [i + 1 for i, l in enumerate(open(W + '/src/demo.nim')) if 'shout(' in l][0], "name": "shout"}}},
+            {"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "no_such_tool", "arguments": {}}}]
+    r = subprocess.run([nedls, '--mcp', '--root', W], input='\n'.join(json.dumps(m) for m in msgs) + '\n', capture_output=True,
+                       text=True, timeout=60, env=dict(os.environ, XDG_CONFIG_HOME=CFG))
+    ans = {}
+    for l in r.stdout.splitlines():
+        try: j = json.loads(l)
+        except ValueError: continue
+        ans[j.get('id')] = j
+    check('651 mcp: initialize', ans.get(1, {}).get('result', {}).get('serverInfo', {}).get('name') == 'ned', r.stdout + r.stderr)
+    names = [t['name'] for t in ans.get(2, {}).get('result', {}).get('tools', [])]
+    check('651 mcp: the engine\'s tools', 'nim_definition' in names and 'nim_outline' in names, str(names))
+    out = ans.get(3, {}).get('result', {}).get('content', [{}])[0].get('text', '')
+    check('651 mcp: a file\'s outline', 'proc shout' in out, out)
+    d = ans.get(4, {}).get('result', {}).get('content', [{}])[0].get('text', '')
+    check('651 mcp: where a name is declared', 'utils.nim:' in d and 'shout' in d, d)
+    check('651 mcp: an unknown tool is an error', 'error' in ans.get(5, {}), str(ans.get(5)))
+
+def t_651_mcp_http():
+    # 6.51: an MCP server on the web (ai.mcpServers' "url"): ned's bridge posts each message, keeps the session id,
+    # reads JSON and server-sent events, sends the headers (the token from the environment)
+    import http.server, threading
+    seen = []
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+            seen.append((dict(self.headers), body))
+            if 'id' not in body:
+                self.send_response(202); self.send_header('Content-Length', '0'); self.end_headers(); return
+            if body['method'] == 'initialize':
+                out = json.dumps({"jsonrpc": "2.0", "id": body['id'], "result": {"protocolVersion": "2025-06-18",
+                                  "capabilities": {"tools": {}}, "serverInfo": {"name": "w", "version": "1"}}}).encode()
+                self.send_response(200); self.send_header('Content-Type', 'application/json')
+                self.send_header('Mcp-Session-Id', 'sess-651'); self.send_header('Content-Length', str(len(out)))
+                self.end_headers(); self.wfile.write(out); return
+            out = ('event: message\ndata: ' + json.dumps({"jsonrpc": "2.0", "id": body['id'], "result": {"tools": [
+                   {"name": "webtool", "description": "d", "inputSchema": {"type": "object"}}]}}) + '\n\n').encode()
+            self.send_response(200); self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Content-Length', str(len(out))); self.end_headers(); self.wfile.write(out)
+    srv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = 'http://127.0.0.1:%d/mcp' % srv.server_address[1]
+    msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}]
+    r = subprocess.run([BIN, '--mcp-http', url], input='\n'.join(json.dumps(m) for m in msgs) + '\n', capture_output=True,
+                       text=True, timeout=60, env=dict(os.environ, NED_MCP_HEADERS='{"Authorization": "Bearer ${TOK651}"}',
+                                                       TOK651='secret-651', XDG_STATE_HOME=TMP + '/state'))
+    srv.shutdown()
+    lines = [json.loads(l) for l in r.stdout.splitlines() if l.startswith('{')]
+    check('651 mcp http: the answers come back (JSON and events)', [l.get('id') for l in lines] == [1, 2] and
+          lines[1]['result']['tools'][0]['name'] == 'webtool', r.stdout + r.stderr)
+    check('651 mcp http: the token from the environment', all(h.get('Authorization') == 'Bearer secret-651' for h, _ in seen), str(seen))
+    check('651 mcp http: the session id kept', len(seen) == 3 and seen[1][0].get('Mcp-Session-Id') == 'sess-651' and
+          seen[2][0].get('Mcp-Session-Id') == 'sess-651', str([h.get('Mcp-Session-Id') for h, _ in seen]))
+    check('651 mcp http: the token is not on the command line', 'secret-651' not in ' '.join(sys.argv), '')
+
+def t_651_secrets_commit():
+    # 6.51: a commit that takes an API key stops (git.secretsCheck), and goes on with (c)ommit anyway
+    setup()
+    G = 'git -C %s -c user.name=t -c user.email=t@t ' % W
+    sh(G + 'init -q'); sh(G + 'add -A'); sh(G + 'commit -qm base')
+    before = sh(G + 'rev-parse HEAD').stdout.strip()
+    open(W + '/conf.nim', 'w').write('const key = "ghp_' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"\n')
+    sh(G + 'add conf.nim')
+    start('src/demo.nim', w=130, h=34); time.sleep(0.6)
+    palette('Git: commit (message box)'); time.sleep(0.8)
+    text('add the key'); keys('C-s'); ok = wait_for('A secret in what you commit', 8)
+    s = screen()
+    check('651 a secret stops the commit', ok and 'conf.nim:1' in s, s)
+    check('651 … nothing committed yet', sh(G + 'rev-parse HEAD').stdout.strip() == before, sh(G + 'log -2 --format=%s').stdout)
+    keys('c'); time.sleep(2)
+    check('651 … and (c)ommit anyway commits', sh(G + 'log -1 --format=%s').stdout.strip() == 'add the key',
+          sh(G + 'log -1 --format=%s').stdout + screen())
+
+def t_651_fim():
+    # 6.51: inline suggestions by fill-in-the-middle (Ollama's /api/generate with the text after the cursor)
+    port = 11998
+    log = TMP + '/fim651.log'
+    try: os.remove(log)
+    except OSError: pass
+    srv = subprocess.Popen(['python3', MOCKS + '/mockollama.py', str(port), log])
+    try:
+        time.sleep(0.5)
+        setup({"ai.provider": "ollama", "ai.baseUrl": "http://127.0.0.1:%d/v1" % port, "ai.inlineCompletion": True,
+               "ai.inlineCompletionDelay": 300, "ai.inlineCompletionModel": "coder", "nim.nimsuggest": None})
+        open(W + '/fim.nim', 'w').write('proc label(): string =\n  result =\n  echo "after"\n')
+        start('fim.nim', w=110, h=20); time.sleep(1.2)
+        keys('C-g'); text('2'); keys('Enter'); keys('End'); text(' ')
+        ok = wait_for('fim-651', 8)
+        check('651 fill-in-the-middle: the suggestion shown', ok, screen())
+        sent = [json.loads(l) for l in open(log)] if os.path.exists(log) else []
+        check('651 … asked with the code before and after the cursor', sent and 'proc label' in sent[-1]['prompt'] and
+              'echo "after"' in sent[-1]['suffix'], str(sent[-1:])[:500])
+    finally:
+        srv.kill()
+
 tests = [t_edit_save_undo, t_find_replace, t_multicursor, t_project_search, t_terminal, t_run_file, t_lsp, t_lsp_diag, t_ai_chat, t_split_zen_theme, t_vim, t_recovery, t_quit_dirty, t_mixed_folder, t_builtin_nimsuggest, t_server_crash_restart, t_engine_member_completion, t_engine_hover_def_sig, t_engine_refs_rename, t_engine_imports, t_engine_without_nimsuggest, t_engine_outline_symbols, t_format_keeps_cursor, t_zen_vim, t_ai_insert, t_format_builtin, t_format_choice, t_reset_settings, t_52_refactors, t_52_format_selection, t_52_conflict, t_52_settings_search, t_52_mouse, t_521_debugger, t_521_touchbar, t_521_bp_follow_edits, t_522_navigation, t_522_peek_hierarchy_stage, t_522_rename_imports, t_522_shortcuts_markdown, t_522_multibuffer, t_522_nim_codegen, t_522_nim_tools, t_53_alerts_and_formatter, t_53_diff_view, t_53_rename_preview, t_53_debugger_watch_test, t_53_user_commands, t_531_help_menus, t_532_polish, t_54_git, t_55_publish, t_56_todos, t_561_review_fixes, t_562_format_cursor, t_563_open_folder, t_564_tiny_screens, t_564_save_safety, t_57_themes, t_57_ai, t_57_nim, t_57_git, t_571_rulers, t_572_editorconfig, t_572_tasks, t_572_errors, t_572_swatches, t_572_examples, t_59_small, t_59_html, t_59_problems_mb, t_59_lsp_more, t_59_langs_tests, t_59_ai_more, t_59_dap, t_510_large, t_510_debug_tools, t_510_testament, t_510_repl, t_510_nimble_outdated, t_510_merge_editor, t_510_spell, t_510_coverage, t_510_langs, t_510_mcp_more, t_510_emmet_css, t_510_sync, t_510_keymaps, t_510_accessible, t_510_workspace, t_510_remote, t_511_stale_errors, t_511_embedded, t_512_c_interop, t_512_refs_big, t_512_comp_stale, t_513_emit_edit, t_513_emit_errors, t_513_emit_c, t_514_emit_clangd, t_515_emit_more, t_515_strings, t_516_quickfixes, t_516_ai_fix, t_517_remote_git, t_517_workspace_git, t_518_macros, t_518_terminal, t_519_refactor, t_519_lists, t_520_agent_check, t_520_ai_tests, t_521_remote, t_521_git, t_521_format_self, t_522_perf, t_523_include, t_523_typehints, t_523_charlit, t_524_debug, t_524_format, t_524_deps, t_525_hints, t_525_engine, t_525_csv, t_525_profile, t_525_macro_nested, t_526_typing_errors, t_527_expand, t_527_complete, t_527_hover, t_528_hierarchy, t_528_refs, t_528_actions, t_529_clangd_fixes, t_529_examples, t_60_includes, t_60_protect, t_61_semantic, t_63_marks, t_63_git, t_63_format, t_63_paste, t_63_cdocs, t_64_engine, t_65_cengine, t_65_ligatures, t_66_cwrap, t_66_zen_menu, t_66_align_hints, t_66_trust, t_66_postfix, t_66_copies, t_66_test_on_save, t_66_ctvalues, t_66_include_check, t_67_github_signin, t_67_git_undo, t_67_commit_checks, t_67_review_comments, t_67_ai_grounded, t_67_ai_fix_test, t_67_format_changed, t_67_format_preview, t_67_yaml_toml, t_67_termux_clock, t_67_rich_colors, t_67_theme_editor, t_67_two_servers, t_67_lsp_links, t_67_ai_plan, t_67_ai_offline, t_68_nedfmt, t_68_engine_checks, t_68_compiler_answers, t_68_macro_names, t_68_settings_panel, t_69_locked_versions, t_69_expected_type, t_69_memory_layout, t_69_raises_hints, t_69_engine_hints, t_69_shared_settings, t_69_toolchain, t_69_lint_and_ci, t_610_expected_multiline, t_610_can_be_func, t_610_concepts, t_610_nim_coverage, t_610_lint_rules, t_610_imports_required, t_610_dep_tree_locked, t_610_project_checks, t_610_fmt_uses, t_611_terminal_scroll, t_611_frames_vt, t_611_perf_report, t_612_hints_ahead, t_612_reflow_comments, t_6112_examples_after_format, t_6112_long_line, t_6112_terminal_flood, t_612_nim3, t_612_nim3_port, t_612_hex, t_612_hex_exe, t_612_big_text, t_613_remote, t_613_terminal_answers, t_613_edit_tools, t_613_vim_filter, t_614_web_css, t_614_web_html, t_614_web_sql, t_614_picker_preview, t_614_jump_labels, t_614_git_new_folder, t_614_format_pieces, t_6141_quick_fix_keys, t_6141_ref_counts, t_6141_showcase, t_615_select_structure, t_615_surround, t_615_vim_surround, t_615_undo_tree, t_615_git_changes, t_615_next_edit, t_615_web_js, t_615_cpp, t_616_engine_worker, t_618_nedls_in_ned, t_619_nimble_resolve, t_619_plugins, t_619_plugins_vim, t_619_plugins_lsp_lang, t_619_hot_exit, t_619_encodings, t_619_key_conflicts, t_620_plugin_language, t_620_plugin_full_nim, t_6241_plugin_check, t_620_ast_docs, t_620_nimble_edit, t_620_emit_names, t_620_viewer, t_620_plugin_list, t_621_emit_format, t_621_reset, t_621_settings_form, t_621_fields, t_621_context_menus, t_621_drag_drop, t_621_atlas, t_621_decompile, t_621_new_project, t_622_settings_controls, t_622_nimscript, t_622_plugin_api, t_622_doc_comments, t_623_decompile_menu, t_623_align_comments, t_623_c_engine, t_623_emit_builtin_c, t_623_nim_rewrites, t_623_call_args, t_624_compiler_explorer, t_624_ce_toolbar, t_6241_dock_view_menu, t_6241_ce_all_procs, t_625_indent, t_625_plugins_menu, t_625_which_key, t_625_oil, t_625_engine_checks,
          t_625_chain_hints, t_625_rename_reach, t_625_completion_recent, t_625_oracle, t_625_c_if, t_625_c_checks,
          t_625_cpp_overloads, t_624_compiler_explorer_c,
@@ -12117,4 +12357,6 @@ tests = [t_edit_save_undo, t_find_replace, t_multicursor, t_project_search, t_te
          t_646_ai_tokens, t_646_bad_bytes, t_647_vim_keys_names, t_647_vim_esc_alt,
          t_648_acp_chat, t_648_acp_permissions, t_648_acp_stop_and_crash, t_648_acp_hostile, t_648_acp_v2_and_signin, t_648_acp_choose,
          t_649_terminal_kitty_u, t_649_completion_docs_later,
-         t_650_safe_mode, t_650_record_replay, t_650_no_nimsuggest, t_650_signature_search]
+         t_650_safe_mode, t_650_record_replay, t_650_no_nimsuggest, t_650_signature_search,
+         t_651_shells, t_651_terminal_folder_links, t_651_completions, t_651_agent_engine_sandbox,
+         t_651_nedls_mcp, t_651_mcp_http, t_651_secrets_commit, t_651_fim]

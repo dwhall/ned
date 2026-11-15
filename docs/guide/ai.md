@@ -16,9 +16,11 @@ export ANTHROPIC_API_KEY=…     # or OPENAI_API_KEY, OPENROUTER_API_KEY, GROQ_A
 Choose the provider and the model with *AI: choose provider…* and *AI: choose model…* (or *AI: settings…*), or in
 the settings: `ai.provider` (anthropic, openai, openrouter, ollama, groq, deepseek, gemini, mistral, custom),
 `ai.model`, and `ai.baseUrl` for Ollama or any OpenAI-compatible server. `ai.apiKeyEnv` names another environment
-variable for the key, and `ai.apiKey` holds one in the settings (an environment variable is safer). *Type a model
-id…* in the model list takes any model your provider offers. Keys are handed to `curl` through a private temporary
-file, never on a command line.
+variable for the key, and `ai.apiKey` holds one in the settings (an environment variable is safer).
+`ai.apiKeyCommand` takes it from a password manager or the system's keyring instead — `pass show anthropic`,
+`secret-tool lookup service anthropic`, `security find-generic-password -w -s anthropic` — asked once a session and
+kept in memory only. *Type a model id…* in the model list takes any model your provider offers. Keys are handed to
+`curl` through a private temporary file, never on a command line.
 
 **No key, no internet**: *AI: on this device, offline (Ollama, llama.cpp)…* (also first in *AI: choose provider…*)
 runs a model on your phone or computer. It finds Ollama — or installs it (`pkg install ollama` in Termux, `brew
@@ -109,6 +111,15 @@ search the project, edit or write a file, run a command, and read the problems. 
   done (`ai.checkEdits`). `ai.maxSteps` (30) limits the tool steps of one request.
 - **Undo.** Every run keeps the files it changed: the toast at the end, or *AI: undo the assistant's changes…*,
   puts them back. *AI: review the assistant's changes…* shows each file's change side by side; `r` undoes one.
+- **It asks ned's Nim engine.** In a Nim project the agent has five more tools — where a name is declared
+  (`nim_definition`), every use of it (`nim_references`), the type of an expression at a line (`nim_type`), the
+  routines that fit a signature (`nim_routines_by_signature`) and a file's declarations (`nim_outline`) — the
+  answers ned's own editor gives, so it asks instead of reading whole files and guessing.
+- **Its commands run in a sandbox** (`ai.sandbox`, Linux): they read the system, Nim and the project, change files
+  only in the project, the caches and a temporary folder of their own, have no network (`"net"` allows it), and get
+  none of the API keys and tokens in your environment. A command that fails there tells the agent so, and it asks
+  you for more. The commands ACP agents ask ned to run are kept the same way. Elsewhere (Termux, macOS, Windows,
+  Linux before 5.13) commands run as you, as before.
 - **Plan first** (*AI: plan a change, then do it step by step…*, or `/plan …`): the assistant reads the code —
   editing and commands are refused while it plans — and answers with numbered steps. *Do it* runs them all
   (stopping when a step leaves errors), *One step* asks again after each, *Change the plan…* sends what should be
@@ -129,6 +140,17 @@ in `ai.mcpServers` and offers their tools to the agent; each call asks first unl
                               "env": {"GITHUB_TOKEN": "…"}}}}
 ```
 
+A server on the web (MCP's Streamable HTTP) needs no program: its address, and the headers it wants —
+`${NAME}` takes an environment variable, so the token stays out of the settings:
+
+```json
+{"ai.mcpServers": {"github": {"url": "https://api.githubcopilot.com/mcp/",
+                              "headers": {"Authorization": "Bearer ${GITHUB_TOKEN}"}}}}
+```
+
+ned talks to it through a bridge of its own (`ned --mcp-http`, with `curl`); the headers go to `curl` in a private
+file, never on a command line.
+
 A server's **prompts** are chat commands, `/server:name`, and its **resources** are mentions, `@server:uri`.
 *AI: MCP servers…* lists the servers — ready, starting or failed — with their tools, resources and prompts, and
 restarts them. Tokens go to the server's environment, never onto
@@ -136,11 +158,12 @@ a command line, and a project's settings cannot add servers until you trust its 
 
 ## Agents of their own (ACP)
 
-An agent that is a program of its own — Claude Agent, Codex, Gemini CLI, or any other that speaks the [Agent
-Client Protocol](https://agentclientprotocol.com) — can work in the AI dock in place of ned's own assistant.
-*AI: choose agent…* lists ned's own assistant, your agents, and Claude Agent, Codex and Gemini CLI to add with a
-tap. Those three run with `npx`, so they need Node.js 22 or newer (`pkg install nodejs` in Termux); what else an
-agent needs to run on your device is the agent's own affair. In the settings:
+An agent that is a program of its own — Claude Agent, Codex, Gemini CLI, GitHub Copilot, or any other that speaks
+the [Agent Client Protocol](https://agentclientprotocol.com) — can work in the AI dock in place of ned's own
+assistant. *AI: choose agent…* lists ned's own assistant, your agents, and Claude Agent, Codex, Gemini CLI and GitHub
+Copilot to add with a tap. Those four run with `npx`, so they need Node.js 22 or newer (`pkg install nodejs` in
+Termux); what else an agent needs to run on your device — Copilot a GitHub sign-in or a key of its own — is the
+agent's own affair. In the settings:
 
 ```json
 {"ai.agentServer": "claude",
@@ -161,7 +184,8 @@ and runs what it needs — and ned:
 - runs the commands it asks ned to run in the project, where your folder trust applies ([Safety](safety.md));
 - sends the file you are in, or the selection, with your message (`ai.includeFile`), the files and context you
   `@mention`, and your pictures when the agent takes them;
-- gives it your MCP servers (`ai.mcpServers`) to use itself; `"mcpServers": false` in its entry keeps them to ned.
+- gives it your MCP servers (`ai.mcpServers`) to use itself, and in a Nim project ned's own engine as one more
+  (`nedls --mcp`, below); `"mcpServers": false` in its entry keeps them to ned.
 
 The dock's top row shows the agent — a tap is *AI: agent…*: its state, its last words when it fails, signing in,
 restarting it —, its mode (a tap changes it), and the conversation's size and cost when the agent says them.
@@ -194,8 +218,31 @@ its entry starts it so).
   inline suggestions*): grey text after the cursor, Tab takes it. `ai.inlineCompletionModel` picks a fast model for
   them; for Nim, a suggestion that names something that does not exist is dropped (`ai.checkSuggestions`). On the
   empty line under a comment, the suggestion is the code the comment describes — a whole block of it.
+- **Fill in the middle** (`ai.inlineCompletionFim`, auto): with Mistral (Codestral), DeepSeek and Ollama (a code
+  model: qwen2.5-coder, deepseek-coder …) the suggestions are asked the model's own way — the code before the
+  cursor and the code after it, and the model writes what goes between — quicker and closer than a chat model. A
+  model that refuses it is asked as a chat model from then on.
 - **Next edits from AI** (`ai.nextEdit`, off by default): after an edit with no repeat in the file, the quick model
   is asked what edit follows from it — shown as `→ … ⇥ (AI)`, Tab takes it.
+
+## ned's engine for other agents: `nedls --mcp`
+
+`nedls --mcp` is ned's Nim engine as an MCP server, over stdin and stdout: the five tools above for Claude Code,
+Codex, Gemini CLI or any other agent, in ned or outside it.
+
+```sh
+claude mcp add ned -- nedls --mcp                  # Claude Code
+```
+
+```toml
+# Codex: ~/.codex/config.toml
+[mcp_servers.ned]
+command = "nedls"
+args = ["--mcp"]
+```
+
+`--root DIR` names the project (else the folder it starts in). It reads your ned settings and finds Nim the way
+nedls does.
 
 ## With git
 

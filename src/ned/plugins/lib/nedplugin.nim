@@ -606,6 +606,23 @@ proc shellAsync*(cmd: string, cb: proc(output: string, code: int), dir = "") =
   cbOwner.add curPlugin
   discard api("shellAsync", %*{"cmd": cmd, "dir": dir, "cb": callbacks.high})
 
+proc askAi*(prompt: string, cb: proc(answer, error: string), system = "", smart = false, maxTokens = 1000) =
+  ## Asks the assistant — the AI provider and model of your settings — and calls `cb` with its answer, or with
+  ## what went wrong in `error` (no provider set up, the request failed). The plugin goes on meanwhile. `system`:
+  ## how it should answer (else: briefly, as for a plugin); `smart`: the chat model (else the quick one, as for
+  ## suggestions). Secrets in the prompt are taken out first, as for the chat. Needs the "ai" permission
+  ## (`ValueError` without it): what the plugin sends goes to your provider, with your key.
+  ##
+  ##     askAi("A one-line commit message for:\n" & diff) do (answer, error: string):
+  ##       if error.len == 0: toast(answer) else: toast("no answer: " & error)
+  let f = cb
+  callbacks.add proc(a: JsonNode): JsonNode =
+    f(a{"answer"}.getStr, a{"error"}.getStr)
+    newJNull()
+  cbOwner.add curPlugin
+  discard api("askAi", %*{"prompt": prompt, "system": system, "smart": smart, "maxTokens": maxTokens,
+                          "cb": callbacks.high})
+
 type RegexMatch* = object
   ## One match of `regexMatches`: where it is in the text, in bytes, and where each of its groups is.
   start*, stop*: int             ## the match: `text[start ..< stop]` (byte offsets; stop not in it)
@@ -791,6 +808,7 @@ proc permission*(what, why: string) = discard
   ##   the project (its own data needs none: `writeData`)
   ## - "clipboard": `clipboard` and `setClipboard`
   ## - "network": a plugin in full Nim's sockets (std/net, std/httpclient …)
+  ## - "ai": `askAi` — what it sends goes to your AI provider
   ##
   ## `why` is what ned shows you when it asks. ned reads these lines, and what the source uses, before the plugin
   ## runs, and asks you once; a call that was not allowed raises `ValueError`. Nothing happens when this runs:
