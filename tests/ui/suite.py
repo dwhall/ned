@@ -12338,6 +12338,261 @@ def t_651_fim():
     finally:
         srv.kill()
 
+def t_652_no_sandbox():
+    # 6.52: where the assistant's commands cannot run in the sandbox (no Landlock: Android, macOS — played here by
+    # NED_NO_LANDLOCK), ai.autoApprove "all" still asks before each command and says why; ai.sandbox off: it does not
+    home = TMP + '/home652'
+    for sandbox in ['on', 'off']:
+        shutil.rmtree(home, ignore_errors=True); os.makedirs(home)
+        for f in ['zq-inside.txt']:
+            if os.path.exists(W + '/' + f): os.remove(W + '/' + f)
+        setup({"ai.agent": True, "ai.autoApprove": "all", "ai.checkEdits": False, "ai.sandbox": sandbox})
+        start('src/demo.nim', w=130, h=40, env_extra='HOME=' + home + ' NED_NO_LANDLOCK=1'); time.sleep(0.6)
+        keys('M-c'); time.sleep(0.4); text('ZQSANDBOX make two files'); keys('Enter')
+        if sandbox == 'on':
+            ok = wait_for('no sandbox for commands', 20); time.sleep(0.3)
+            s = screen()
+            check('652 no sandbox: the command waits for a yes, and says why', ok and 'Allow (y)' in s and
+                  not os.path.exists(W + '/zq-inside.txt'), s)
+            keys('y')
+        ok = wait_for('Tool said', 20)
+        check('652 no sandbox: … it runs once allowed' if sandbox == 'on' else
+              '652 no sandbox, ai.sandbox off: it runs without asking', ok and os.path.exists(W + '/zq-inside.txt'), screen())
+    shutil.rmtree(home, ignore_errors=True)
+
+def t_652_shells():
+    # 6.52: PowerShell and nushell in the terminal (GitHub's machines have both): their own startup files read, each
+    # command marked, a failed one in the header, Ctrl+↑ to the last one as typed
+    shells = [s for s in ['pwsh', 'nu'] if which(s)]
+    if not shells: need('pwsh', 'nu')
+    for nm in shells:
+        setup({"terminal.shell": which(nm)})
+        if nm == 'pwsh':                 # (its profile: under XDG_CONFIG_HOME, the tests' config folder)
+            os.makedirs(CFG + '/powershell', exist_ok=True)
+            open(CFG + '/powershell/Microsoft.PowerShell_profile.ps1', 'w').write("function hi { 'hello-from-rc' }\n")
+        else:
+            os.makedirs(CFG + '/nushell', exist_ok=True)
+            open(CFG + '/nushell/config.nu', 'w').write("$env.config.show_banner = false\ndef hi [] { 'hello-from-rc' }\n")
+            open(CFG + '/nushell/env.nu', 'w').write('')
+        start('src/demo.nim', w=120, h=34, env_extra='HOME=' + TMP + ' POWERSHELL_UPDATECHECK=Off POWERSHELL_TELEMETRY_OPTOUT=1')
+        time.sleep(0.5)
+        keys('C-\\'); time.sleep(5 if nm == 'pwsh' else 2)
+        text('hi'); keys('Enter'); ok = wait_for('hello-from-rc', 15)
+        check('652 %s: its own startup file is read' % nm, ok, screen())
+        text('^false' if nm == 'nu' else 'false'); keys('Enter'); ok = wait_for('exit 1', 10); time.sleep(0.3)
+        s = screen()
+        check('652 %s: the header shows a failed command' % nm, ok and 'exit 1' in s.split('TERMINAL')[1].splitlines()[0], s)
+        text('echo marked-652'); keys('Enter'); wait_for(r'✓|ok \d', 8); time.sleep(0.5)
+        s = screen()
+        marks = [l for l in s.split('TERMINAL')[1].splitlines() if l.startswith('● ')]
+        check('652 %s: each command is marked in the gutter' % nm, len(marks) >= 3, s)
+        keys('C-Up'); time.sleep(0.4)
+        check('652 %s: Ctrl+↑ goes to the last command, as typed' % nm, '$ echo marked-652' in screen(), screen())
+        keys('Escape')
+    shutil.rmtree(CFG + '/powershell', ignore_errors=True)
+    shutil.rmtree(CFG + '/nushell', ignore_errors=True)
+
+def t_652_completions():
+    # 6.52: ned --completions pwsh and nu — each completes ned's options from its own --help
+    bindir = TMP + '/compl652'
+    os.makedirs(bindir, exist_ok=True)
+    try: os.remove(bindir + '/ned')
+    except OSError: pass
+    os.symlink(BIN, bindir + '/ned')
+    env = dict(os.environ, PATH=bindir + ':' + os.environ['PATH'], HOME=TMP, XDG_CONFIG_HOME=TMP + '/compl652cfg')
+    for sh_ in ['pwsh', 'nu']:
+        r = subprocess.run([BIN, '--completions', sh_], capture_output=True, text=True)
+        check('652 completions: %s script' % sh_, r.returncode == 0 and 'ned' in r.stdout, r.stdout + r.stderr)
+        open(bindir + '/ned.' + sh_, 'w').write(r.stdout)
+    if which('nu'):
+        r = subprocess.run(['nu', '-c', 'source ' + bindir + '/ned.nu; print (do $env.config.completions.external.completer '
+                            '[ned --rec] | to json -r)'], capture_output=True, text=True, env=env, timeout=60)
+        check('652 completions: nushell completes --rec to --record', r.stdout.strip() == '["--record"]', r.stdout + r.stderr)
+    if which('pwsh'):
+        r = subprocess.run(['pwsh', '-NoProfile', '-Command', '. ' + bindir + '/ned.pwsh; (TabExpansion2 -inputScript '
+                            "'ned --rec' -cursorColumn 9).CompletionMatches | ForEach-Object { $_.CompletionText }"],
+                           capture_output=True, text=True, env=env, timeout=120)
+        check('652 completions: PowerShell completes --rec to --record', r.stdout.split() == ['--record'], r.stdout + r.stderr)
+
+def t_652_terminal_help():
+    # 6.52: help at the shell's prompt — suggestions as you type (an earlier command, a git branch, a nimble task, a
+    # folder), taken with Ctrl+Space and Enter or a tap; a click on the command line moves the shell's cursor; the
+    # command whose output fills the terminal stays on its top row; ned's terminal says it is ned (XTVERSION)
+    setup({"terminal.shell": "/bin/bash", "terminal.suggest": True, "terminal.clickToMove": True})
+    subprocess.run(['git', 'branch', 'feature-652'], cwd=W, capture_output=True)
+    os.makedirs(W + '/deep652/inner', exist_ok=True)
+    nb = [f for f in os.listdir(W) if f.endswith('.nimble')]
+    if nb: open(W + '/' + nb[0], 'a').write('\ntask hello652, "says hello":\n  echo "hello"\n')
+    start('src/demo.nim', w=130, h=34, env_extra='HOME=' + TMP); time.sleep(0.5)
+    keys('C-\\'); time.sleep(1.5)
+    text('echo first-652-run'); keys('Enter'); time.sleep(0.6)
+    text('echo fi'); time.sleep(0.8)
+    s = screen()
+    check('652 suggestions: an earlier command it begins, above the line', 'echo first-652-run' in s and 'earlier' in s, s)
+    keys('C-Space'); time.sleep(0.3); keys('Enter'); time.sleep(0.4); keys('Enter'); time.sleep(0.6)
+    check('652 … Ctrl+Space, Enter: taken', screen().count('first-652-run') >= 4, screen())
+    text('git checkout feat'); time.sleep(0.8)
+    pos = place_of('feature-652')
+    check('652 suggestions: a git branch', pos is not None and 'branch' in screen(), screen())
+    if pos:
+        click(*pos); time.sleep(0.5)
+        check('652 … a tap takes it', 'git checkout feature-652' in screen(), screen())
+    keys('C-u'); time.sleep(0.2)
+    if nb:
+        text('nimble hel'); time.sleep(0.8)
+        check('652 suggestions: a nimble task of the project', 'hello652' in screen() and 'task' in screen(), screen())
+        keys('C-u'); time.sleep(0.2)
+    text('cd dee'); time.sleep(0.8)
+    check('652 suggestions: a folder', 'deep652/' in screen() and 'folder' in screen(), screen())
+    keys('C-u'); time.sleep(0.3)
+    text('echo abcdef'); time.sleep(0.6)
+    rows = screen().splitlines()
+    pos = None
+    for r in range(len(rows) - 1, -1, -1):
+        c = rows[r].find('echo abcdef')
+        if c >= 0:
+            pos = (c + len('echo ab') + 1, r + 1)
+            break
+    check('652 the command line is on the screen', pos is not None, screen())
+    if pos:
+        click(*pos); time.sleep(0.4); text('X'); keys('Enter'); ok = wait_for(r'\n +abXcdef', 5)
+        check('652 a click on the command line moves the shell\'s cursor there', ok, screen())
+    text("printf '\\033[>0q'; IFS= read -rs -t 1 -d '\\' r; r=${r#*|}; echo \"[${r%?}]\""); keys('Enter')
+    ok = wait_for(r'\[ned \d+\.\d+\.\d+\]', 5)
+    check('652 ned\'s terminal says it is ned (XTVERSION)', ok, screen())
+    text('seq 1 300'); keys('Enter'); time.sleep(1.0)
+    s = screen()
+    top = s.split('TERMINAL')[1].splitlines()[1] if 'TERMINAL' in s else ''
+    check('652 the command whose output fills the terminal stays on its top row', '$ seq 1 300' in top, s)
+    if '$ seq 1 300' in top:
+        r = [i for i, l in enumerate(s.splitlines()) if '$ seq 1 300' in l][0]
+        click(s.splitlines()[r].find('$ seq') + 1, r + 1); time.sleep(0.5)
+        check('652 … a click there goes to its start', re.search(r'\d+/\d+ +\$ seq 1 300', screen()), screen())
+    keys('Escape')
+
+def t_652_agent_sandbox():
+    # 6.52: an ACP agent in ned's sandbox (ai.agentSandbox): what it writes itself — not through ned — lands in the
+    # project, not in its home
+    landlock = subprocess.run([BIN, '--sandbox', '--require', '--', 'true'], capture_output=True).returncode == 0
+    if not landlock: need('Landlock')
+    home = TMP + '/home652a'
+    shutil.rmtree(home, ignore_errors=True); os.makedirs(home)
+    log = acp_setup(more={"ai.agentSandbox": True})
+    open(log, 'w').close()
+    c = json.load(open(CFG + '/ned/config.json'))
+    c["ai.agentServers"]["mock"]["reads"] = [MOCKS]            # (the agent's own program, outside the project)
+    c["ai.agentServers"]["mock"]["writes"] = [log]
+    json.dump(c, open(CFG + '/ned/config.json', 'w'))
+    for f in ['zq-agent-inside.txt']:
+        if os.path.exists(W + '/' + f): os.remove(W + '/' + f)
+    start('src/demo.nim', w=130, h=40, env_extra='HOME=' + home); time.sleep(0.8)
+    keys('M-c'); time.sleep(0.5); text('zqwrite'); keys('Enter')
+    ok = wait_for(r'agent wrote inside=\w+ outside=\w+', 30)
+    s = dock_text(screen())
+    check('652 agent sandbox: it writes in the project, not in its home', ok and 'inside=yes outside=no' in s and
+          not os.path.exists(home + '/zq-agent-outside.txt'), s)
+    shutil.rmtree(home, ignore_errors=True)
+
+def t_652_copilot():
+    # 6.52: GitHub Copilot (ai.copilot; its language server played by mocks/mockcopilot.py): the sign-in's code shown,
+    # GitHub's page opened; its suggestion as the grey text, Tab takes it and Copilot is told; its next edit applied
+    log = TMP + '/copilot652.log'
+    opened = TMP + '/opened652.txt'
+    for f in [log, opened]:
+        if os.path.exists(f): os.remove(f)
+    fake = TMP + '/browser652c'
+    os.makedirs(fake, exist_ok=True)
+    open(fake + '/xdg-open', 'w').write('#!/bin/sh\necho "$1" >> ' + opened + '\n')
+    os.chmod(fake + '/xdg-open', 0o755)
+    setup({"ai.copilot": True, "ai.copilotCommand": ["python3", MOCKS + "/mockcopilot.py"], "ai.inlineCompletionDelay": 300,
+           "nim.nimsuggest": None})
+    open(W + '/cop.nim', 'w').write('let a = 1\nlet b = \n')
+    start('cop.nim', w=110, h=24, path=fake + ':' + TOOLS + ':$PATH', env_extra='MOCK_COPILOT_LOG=' + log); time.sleep(1.0)
+    palette('Copilot: sign in'); ok = wait_for('ABCD-1234', 15)
+    check('652 copilot: the sign-in\'s code shown', ok, screen())
+    wait_until(lambda: os.path.exists(opened), 8)
+    check('652 copilot: … and GitHub\'s page opened', os.path.exists(opened) and 'github.com/login/device' in open(opened).read(),
+          open(log).read()[-800:] if os.path.exists(log) else '')
+    keys('Escape'); time.sleep(0.3)
+    keys('C-g'); text('2'); keys('Enter'); keys('End'); text('7')     # (a number: no completion list over it)
+    ok = wait_for('7_from_copilot', 10)
+    check('652 copilot: its suggestion shown as you type', ok, screen())
+    keys('Tab'); time.sleep(0.6)
+    check('652 copilot: Tab takes it', 'let b = 7_from_copilot()' in ftext_or_screen('cop.nim'), screen())
+    wait_until(lambda: re.search(r'workspace/executeCommand .*item-1', open(log).read()), 5)
+    got = open(log).read()
+    check('652 copilot: … and Copilot is told it was shown and taken', 'textDocument/didShowCompletion' in got and
+          re.search(r'workspace/executeCommand .*didAcceptCompletionItem.*item-1', got), got[-800:])
+    ok = wait_for('Copilot suggests a change at line 1', 8)
+    check('652 copilot: then its next edit is offered', ok, screen())
+    palette('Copilot: next edit'); ok = wait_for('Apply Copilot', 8); keys('Enter'); time.sleep(0.5)
+    check('652 copilot: … and applied', ok and '# edited by copilot' in screen(), screen())
+
+def ftext_or_screen(f):
+    # the file's text as saved, or the screen when it is not saved yet
+    return screen() + ftext(f)
+
+def t_652_compare_folders():
+    # 6.52: File: compare two folders — the files that differ (not .git's), each opening as a diff; asked again: the
+    # same two listed at once
+    a, b = TMP + '/cmpA652', TMP + '/cmpB652'
+    for d in [a, b]:
+        shutil.rmtree(d, ignore_errors=True); os.makedirs(d + '/.git'); os.makedirs(d + '/sub')
+        open(d + '/same.txt', 'w').write('same\n')
+        open(d + '/.git/HEAD', 'w').write(d)
+    open(a + '/sub/changed.txt', 'w').write('one\ntwo\n'); open(b + '/sub/changed.txt', 'w').write('one\nTWO-652\n')
+    open(a + '/onlyA.txt', 'w').write('a'); open(b + '/onlyB.txt', 'w').write('b')
+    setup(); start('src/demo.nim', w=130, h=34); time.sleep(0.5)
+    palette('File: compare two folders'); time.sleep(0.4)
+    text('../cmpA652'); keys('Enter'); time.sleep(0.4); text('cmpB652'); keys('Enter'); time.sleep(0.8)
+    s = screen()
+    check('652 compare folders: what differs, what is only in one', '± sub/changed.txt' in s and '− onlyA.txt' in s and
+          '+ onlyB.txt' in s and 'same.txt' not in s and 'HEAD' not in s, s)
+    text('changed'); time.sleep(0.3); keys('Enter'); time.sleep(0.8)
+    check('652 compare folders: … a file opens as a diff', 'TWO-652' in screen() and 'two' in screen(), screen())
+    palette('File: compare two folders'); time.sleep(0.8)
+    check('652 compare folders: asked again, the same two at once', 'cmpA652 ↔ cmpB652' in screen(), screen())
+    keys('Escape')
+    for d in [a, b]: shutil.rmtree(d, ignore_errors=True)
+
+def t_652_mcp_login():
+    # 6.52: ned --mcp-login — an MCP server on the web that asks you to sign in (mocks/mockoauth.py): ned registered,
+    # the browser (a stand-in that follows the page's redirect) back on ned's port with the code, the token kept for
+    # you only; the bridge then sends it, and gets a new one when it has run out
+    import urllib.request
+    port = 11952
+    srv = subprocess.Popen(['python3', MOCKS + '/mockoauth.py', str(port)])
+    fake = TMP + '/browser652'
+    os.makedirs(fake, exist_ok=True)
+    open(fake + '/xdg-open', 'w').write('#!/bin/sh\ncurl -s -L -o /dev/null "$1"\n')
+    os.chmod(fake + '/xdg-open', 0o755)
+    shutil.rmtree(STATE + '/ned/mcp-auth', ignore_errors=True)
+    env = dict(os.environ, XDG_CONFIG_HOME=CFG, XDG_STATE_HOME=STATE, PATH=fake + ':' + os.environ['PATH'])
+    url = 'http://127.0.0.1:%d/mcp' % port
+    msgs = '\n'.join(json.dumps(m) for m in [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+         "clientInfo": {"name": "t", "version": "1"}}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "whoami", "arguments": {}}}]) + '\n'
+    try:
+        time.sleep(0.6)
+        setup()
+        r = subprocess.run([BIN, '--mcp-login', url], capture_output=True, text=True, env=env, timeout=90)
+        check('652 mcp login: signed in, in the browser', r.returncode == 0 and 'Signed in.' in r.stdout, r.stdout + r.stderr)
+        files = glob.glob(STATE + '/ned/mcp-auth/*.json')
+        check('652 mcp login: … the token kept, for you only', len(files) == 1 and os.stat(files[0]).st_mode & 0o077 == 0,
+              str(files))
+        r = subprocess.run([BIN, '--mcp-http', url], input=msgs, capture_output=True, text=True, env=env, timeout=60)
+        m = re.search(r'signed in with (tok\d+)', r.stdout)
+        check('652 mcp login: the bridge sends the token', m is not None, r.stdout + r.stderr)
+        urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:%d/expire' % port, data=b'', method='POST'))
+        r = subprocess.run([BIN, '--mcp-http', url], input=msgs, capture_output=True, text=True, env=env, timeout=60)
+        m2 = re.search(r'signed in with (tok\d+)', r.stdout)
+        check('652 mcp login: … and a new one when it has run out', m is not None and m2 is not None and m2.group(1) != m.group(1),
+              r.stdout + r.stderr)
+    finally:
+        srv.kill()
+
+
 tests = [t_edit_save_undo, t_find_replace, t_multicursor, t_project_search, t_terminal, t_run_file, t_lsp, t_lsp_diag, t_ai_chat, t_split_zen_theme, t_vim, t_recovery, t_quit_dirty, t_mixed_folder, t_builtin_nimsuggest, t_server_crash_restart, t_engine_member_completion, t_engine_hover_def_sig, t_engine_refs_rename, t_engine_imports, t_engine_without_nimsuggest, t_engine_outline_symbols, t_format_keeps_cursor, t_zen_vim, t_ai_insert, t_format_builtin, t_format_choice, t_reset_settings, t_52_refactors, t_52_format_selection, t_52_conflict, t_52_settings_search, t_52_mouse, t_521_debugger, t_521_touchbar, t_521_bp_follow_edits, t_522_navigation, t_522_peek_hierarchy_stage, t_522_rename_imports, t_522_shortcuts_markdown, t_522_multibuffer, t_522_nim_codegen, t_522_nim_tools, t_53_alerts_and_formatter, t_53_diff_view, t_53_rename_preview, t_53_debugger_watch_test, t_53_user_commands, t_531_help_menus, t_532_polish, t_54_git, t_55_publish, t_56_todos, t_561_review_fixes, t_562_format_cursor, t_563_open_folder, t_564_tiny_screens, t_564_save_safety, t_57_themes, t_57_ai, t_57_nim, t_57_git, t_571_rulers, t_572_editorconfig, t_572_tasks, t_572_errors, t_572_swatches, t_572_examples, t_59_small, t_59_html, t_59_problems_mb, t_59_lsp_more, t_59_langs_tests, t_59_ai_more, t_59_dap, t_510_large, t_510_debug_tools, t_510_testament, t_510_repl, t_510_nimble_outdated, t_510_merge_editor, t_510_spell, t_510_coverage, t_510_langs, t_510_mcp_more, t_510_emmet_css, t_510_sync, t_510_keymaps, t_510_accessible, t_510_workspace, t_510_remote, t_511_stale_errors, t_511_embedded, t_512_c_interop, t_512_refs_big, t_512_comp_stale, t_513_emit_edit, t_513_emit_errors, t_513_emit_c, t_514_emit_clangd, t_515_emit_more, t_515_strings, t_516_quickfixes, t_516_ai_fix, t_517_remote_git, t_517_workspace_git, t_518_macros, t_518_terminal, t_519_refactor, t_519_lists, t_520_agent_check, t_520_ai_tests, t_521_remote, t_521_git, t_521_format_self, t_522_perf, t_523_include, t_523_typehints, t_523_charlit, t_524_debug, t_524_format, t_524_deps, t_525_hints, t_525_engine, t_525_csv, t_525_profile, t_525_macro_nested, t_526_typing_errors, t_527_expand, t_527_complete, t_527_hover, t_528_hierarchy, t_528_refs, t_528_actions, t_529_clangd_fixes, t_529_examples, t_60_includes, t_60_protect, t_61_semantic, t_63_marks, t_63_git, t_63_format, t_63_paste, t_63_cdocs, t_64_engine, t_65_cengine, t_65_ligatures, t_66_cwrap, t_66_zen_menu, t_66_align_hints, t_66_trust, t_66_postfix, t_66_copies, t_66_test_on_save, t_66_ctvalues, t_66_include_check, t_67_github_signin, t_67_git_undo, t_67_commit_checks, t_67_review_comments, t_67_ai_grounded, t_67_ai_fix_test, t_67_format_changed, t_67_format_preview, t_67_yaml_toml, t_67_termux_clock, t_67_rich_colors, t_67_theme_editor, t_67_two_servers, t_67_lsp_links, t_67_ai_plan, t_67_ai_offline, t_68_nedfmt, t_68_engine_checks, t_68_compiler_answers, t_68_macro_names, t_68_settings_panel, t_69_locked_versions, t_69_expected_type, t_69_memory_layout, t_69_raises_hints, t_69_engine_hints, t_69_shared_settings, t_69_toolchain, t_69_lint_and_ci, t_610_expected_multiline, t_610_can_be_func, t_610_concepts, t_610_nim_coverage, t_610_lint_rules, t_610_imports_required, t_610_dep_tree_locked, t_610_project_checks, t_610_fmt_uses, t_611_terminal_scroll, t_611_frames_vt, t_611_perf_report, t_612_hints_ahead, t_612_reflow_comments, t_6112_examples_after_format, t_6112_long_line, t_6112_terminal_flood, t_612_nim3, t_612_nim3_port, t_612_hex, t_612_hex_exe, t_612_big_text, t_613_remote, t_613_terminal_answers, t_613_edit_tools, t_613_vim_filter, t_614_web_css, t_614_web_html, t_614_web_sql, t_614_picker_preview, t_614_jump_labels, t_614_git_new_folder, t_614_format_pieces, t_6141_quick_fix_keys, t_6141_ref_counts, t_6141_showcase, t_615_select_structure, t_615_surround, t_615_vim_surround, t_615_undo_tree, t_615_git_changes, t_615_next_edit, t_615_web_js, t_615_cpp, t_616_engine_worker, t_618_nedls_in_ned, t_619_nimble_resolve, t_619_plugins, t_619_plugins_vim, t_619_plugins_lsp_lang, t_619_hot_exit, t_619_encodings, t_619_key_conflicts, t_620_plugin_language, t_620_plugin_full_nim, t_6241_plugin_check, t_620_ast_docs, t_620_nimble_edit, t_620_emit_names, t_620_viewer, t_620_plugin_list, t_621_emit_format, t_621_reset, t_621_settings_form, t_621_fields, t_621_context_menus, t_621_drag_drop, t_621_atlas, t_621_decompile, t_621_new_project, t_622_settings_controls, t_622_nimscript, t_622_plugin_api, t_622_doc_comments, t_623_decompile_menu, t_623_align_comments, t_623_c_engine, t_623_emit_builtin_c, t_623_nim_rewrites, t_623_call_args, t_624_compiler_explorer, t_624_ce_toolbar, t_6241_dock_view_menu, t_6241_ce_all_procs, t_625_indent, t_625_plugins_menu, t_625_which_key, t_625_oil, t_625_engine_checks,
          t_625_chain_hints, t_625_rename_reach, t_625_completion_recent, t_625_oracle, t_625_c_if, t_625_c_checks,
          t_625_cpp_overloads, t_624_compiler_explorer_c,
@@ -12359,4 +12614,6 @@ tests = [t_edit_save_undo, t_find_replace, t_multicursor, t_project_search, t_te
          t_649_terminal_kitty_u, t_649_completion_docs_later,
          t_650_safe_mode, t_650_record_replay, t_650_no_nimsuggest, t_650_signature_search,
          t_651_shells, t_651_terminal_folder_links, t_651_completions, t_651_agent_engine_sandbox,
-         t_651_nedls_mcp, t_651_mcp_http, t_651_secrets_commit, t_651_fim]
+         t_651_nedls_mcp, t_651_mcp_http, t_651_secrets_commit, t_651_fim,
+         t_652_no_sandbox, t_652_shells, t_652_completions, t_652_terminal_help, t_652_agent_sandbox, t_652_copilot,
+         t_652_compare_folders, t_652_mcp_login]

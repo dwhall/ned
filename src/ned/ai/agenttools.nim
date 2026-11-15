@@ -32,11 +32,21 @@ proc outsideProject(c: AiCall): bool =
   except CatchableError: discard
   false
 
+proc aiNoSandbox(): bool =
+  ## ai.autoApprove is "all", but the assistant's commands cannot run in ned's sandbox here (ai.sandbox is on, and
+  ## the system has no Landlock: Android, macOS, Windows, an old kernel) — so each command still waits for a yes.
+  ## With ai.sandbox "off" the person has chosen: commands run without asking, as before
+  cfgAiApprove == "all" and sStr("ai.sandbox") != "off" and landlockAbi() == 0
+
+const AiNoSandboxNote = "ai.autoApprove is all, but this system has no sandbox for commands, so ned asks before " &
+                        "each one (to run them without asking, set ai.sandbox to off)"
+
 proc needsApproval(c: AiCall): bool =
   ## whether the call must wait for the user's yes: never in the planning step (a call that changes anything is refused
   ## at once), always for a path outside the project, never for a tool allowed for the session, else by the kind of tool
-  ## and ai.autoApprove (a read asks only for "none", an edit unless "edits" or "all", a command unless "all"). An
-  ## agent's call (ACP) waits when the agent asked about it
+  ## and ai.autoApprove (a read asks only for "none", an edit unless "edits" or "all", a command unless "all" — and
+  ## then still when it cannot run in the sandbox: aiNoSandbox). An agent's call (ACP) waits when the agent asked
+  ## about it
   if c.name.startsWith("acp:"): return acpWaiting(c.id)
   if aiPlanState == apPlanning and toolKind(c.name) != 0: return false   # (refused at once: see runCall)
   if outsideProject(c): return true            # never silently, whatever ai.autoApprove says
@@ -44,7 +54,7 @@ proc needsApproval(c: AiCall): bool =
   case toolKind(c.name)
   of 0: cfgAiApprove == "none"
   of 1: cfgAiApprove notin ["edits", "all"]
-  else: cfgAiApprove != "all"
+  else: cfgAiApprove != "all" or (c.name == "run_command" and aiNoSandbox())
 
 proc absProjectPath(p: string): string =
   ## the path a tool was given as an absolute, normalised one: ~ expanded, a relative path taken from the project folder

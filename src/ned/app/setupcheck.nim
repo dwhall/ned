@@ -449,6 +449,7 @@ proc initCommandsV4() =
   add("AI: the plan… (go on, change it, go back to a step)", "", aiPlanMenu())
   add("AI: fast / smart model", "", toggleAiFast())
   add("AI: MCP servers…", "", cmdMcpServers())
+  add("MCP: sign in to a server…", "a server on the web that asks you to sign in: in the browser", cmdMcpSignIn())
   add("AI: review the assistant's changes…", "", cmdAiReview())
   add("AI: fix problem at cursor", "", aiFixProblem())
   add("AI: make the failing test pass", "the change kept only when the test then passes", cmdAiFixTest())

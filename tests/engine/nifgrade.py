@@ -4,7 +4,8 @@ resolved to its declaration — the answer for every use of a module's routine, 
 project. Each is asked of ned's engine (the driver build.sh makes) at the same place; they should agree.
 
 The types too: the NIF has the type the compiler gave every `let` and `var`; where one is written without its
-type, the engine's type hint there should be the same type (as ned itself reads the NIF: the driver's `nifhints`).
+type, the engine's type hint there should be the same type (as ned itself reads the NIF: the driver's `nifhints`) —
+or an alias of it (`Hash` for `int`: the compiler writes the alias out).
 
 Usage: nifgrade.py MAIN.nim [--nim PATH/TO/nim-2.4] [--driver ned-engine] [--max N] [--min PERCENT] [--show N]
                             [--min-types PERCENT]
@@ -232,12 +233,15 @@ def main():
                 except OSError: ls = lines_of[path] = []
             # (only where a hint goes: the type not written, the value not a literal that shows it — as ned draws them)
             rest = ls[l][c:].lstrip() if l < len(ls) else ':'
-            if rest[:1] in (':', '{', ',', ')') or not rest.startswith('=') or re.match(r'=\s*[0-9"\']', rest): continue
+            if rest[:1] in (':', '{', ',', ')') or not rest.startswith('=') or rest.startswith('==') or \
+               re.match(r'=\s*[0-9"\']', rest): continue
             want = normT(t)
             if not want or 'typeof' in want or 'untyped' in want: continue
             got = hints_of[path].get((l, c))
             if got is not None and (normT(got) == want or (got.endswith('…') and want.startswith(normT(got[:-1])))):
                 t_same += 1
+            elif got is not None and normT(eng({'cmd': 'alias', 'path': path, 'type': got.lstrip(': ')}).get('type', '')) == want:
+                t_same += 1         # (an alias of that type: Hash for int, BiggestInt for int64 — the compiler writes it out)
             else: t_bad.append((path, l, c, t, got))
     drv.stdin.close(); drv.wait()
     t_total = t_same + len(t_bad)

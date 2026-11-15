@@ -73,7 +73,9 @@ your own startup file is still read:
 | nushell | marks them itself | — |
 
 The POSIX shells have no hook before a command: they mark their prompt and how the last command ended, and the
-Enter you press is where the next one starts. A shell or a prompt that sends VS Code's marks (OSC 633) is read as
+Enter you press is where the next one starts. Every shell in the table is tested on each change to ned (PowerShell
+and nushell on GitHub's machines, cmd.exe and Windows PowerShell on Windows). A program in ned's terminal that asks
+which terminal it is (XTVERSION) is told `ned` and its version. A shell or a prompt that sends VS Code's marks (OSC 633) is read as
 well, with the command line it gives. `"terminal.shellIntegration": false` turns ned's part off.
 
 - A **●** beside each command in the terminal's gutter, **red when it failed**. The panel header shows the last
@@ -84,6 +86,24 @@ well, with the command line it gives. `"terminal.shellIntegration": false` turns
   *Run it again*, *Open its output in a tab* (to search or save it) and *Go to it*.
 - In the palette: *Terminal: commands…* (newest first), *Terminal: run the last command again*, *Terminal: copy the
   last command's output*, *Terminal: previous command* and *Terminal: next command*.
+
+### Help at the prompt
+
+With the shell marking its commands, ned helps with the line you type:
+
+- **Suggestions** above the line, as you type: commands you ran before (this terminal's, then your shell's
+  history — bash, zsh, fish), programs for the first word, files and folders (a word with a `/`, or after `cd`), git
+  branches after `git checkout`, `switch`, `merge`, `rebase` …, git's own commands after `git`, and after `nimble`
+  the project's tasks and nimble's commands. Tap one to take it, or press **Ctrl+Space**, then ↑/↓ and Enter (or Tab);
+  Esc hides them for that line. Every other key goes to the shell as before, so your shell's own Tab completion and
+  history keys still work. Not while fish shows its own suggestion, nor in a shell on another machine (only its
+  earlier commands there). `"terminal.suggest": false` turns them off.
+- **A tap on the command line** moves the shell's cursor there — ned sends the shell ← or → for each character
+  between — so a typo is fixed without the arrow keys. A tap past the end goes to the end
+  (`terminal.clickToMove`).
+- **The command on the top row**: while a command's output fills the terminal — a build, a long listing — or you
+  scroll back through it, the command stays on the top row; a tap there goes to its start
+  (`terminal.stickyCommand`).
 
 ### The folder the shell is in, and what its output names
 
@@ -97,16 +117,19 @@ the browser. On a tablet, a long press (the right-click menu) offers *Open …* 
 
 ### Tab completion of ned's options
 
-`ned --completions bash`, `zsh` or `fish` prints the Tab completion of ned's and nedfmt's options — taken from their
-own `--help` when you press Tab, so it never falls behind:
+`ned --completions bash`, `zsh`, `fish`, `pwsh` or `nu` prints the Tab completion of ned's and nedfmt's options —
+taken from their own `--help` when you press Tab, so it never falls behind:
 
 ```sh
 ned --completions bash > ~/.local/share/bash-completion/completions/ned
 ned --completions zsh > "${fpath[1]}/_ned"
 ned --completions fish > ~/.config/fish/completions/ned.fish
+ned --completions nu | save -f ($nu.default-config-dir | path join ned.nu)    # then in config.nu: source ned.nu
 ```
 
-The Termux package puts all three in place.
+In PowerShell, put `ned --completions pwsh | Out-String | Invoke-Expression` in your profile (`$PROFILE`). The
+nushell script keeps the completer you had for other programs. The Termux package puts bash's, zsh's and fish's in
+place.
 
 ![Two terminals side by side: each command marked, a failed one in red, and the one Ctrl+↑ went to](../../screenshots/terminal-commands.png)
 
@@ -267,7 +290,10 @@ list the settings that help.
 | `terminal.shell` | `""` | the shell (empty: `$SHELL`, then bash, sh) |
 | `terminal.scrollback` | `3000` | lines of scrollback |
 | `terminal.cwd` | `"project"` | where new terminals start: `project` or the current `file`'s folder |
-| `terminal.shellIntegration` | `true` | command marks for bash, zsh and fish (Ctrl+↑/↓, failed commands, copy output) |
+| `terminal.shellIntegration` | `true` | command marks in every shell above (Ctrl+↑/↓, failed commands, copy output) |
+| `terminal.suggest` | `true` | suggestions above the line you type at a marked prompt; Ctrl+Space to pick one with the keys |
+| `terminal.clickToMove` | `true` | a tap on the command line you are typing moves the shell's cursor there |
+| `terminal.stickyCommand` | `true` | the command whose output fills the terminal, on its top row |
 | `terminal.editorEnv` | `true` | in ned's terminal, ned is git's editor (`GIT_EDITOR`, and `EDITOR` / `VISUAL` where not set) |
 | `terminal.keepRunning` | `true` | terminals keep running when ned quits; the next ned in the folder takes them back |
 | `remote.languageServers` | `"auto"` | where a remote folder's language servers run: `auto` (the server's when it has them), `server`, `here` |

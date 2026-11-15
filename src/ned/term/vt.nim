@@ -279,8 +279,8 @@ proc setMode(t: Term, ps: seq[int], on: bool) =
 proc doCsi(t: Term, fin: char) =
   ## runs one finished `ESC [` sequence whose final character is `fin`: moves the cursor, erases in the line or screen,
   ## inserts and deletes lines and characters, scrolls, sets the scroll region, saves and restores the cursor, answers
-  ## the device-attribute, status and cursor-position requests into `t.reply`, and hands colours and modes to sgr and
-  ## setMode; a soft reset (`ESC[!p`) is the one intermediate-character form handled
+  ## the device-attribute, status, version and cursor-position requests into `t.reply`, and hands colours and modes to
+  ## sgr and setMode; a soft reset (`ESC[!p`) is the one intermediate-character form handled
   let ps = t.csiParams()
   # the i-th number of the sequence, or `def` when it is missing or 0
   proc arg(i: int, def = 1): int = (if i < ps.len and ps[i] > 0: ps[i] else: def)
@@ -376,6 +376,9 @@ proc doCsi(t: Term, fin: char) =
     if t.inter == ">": t.reply.add "\e[>0;10;1c"
     elif t.inter.len == 0: t.reply.add "\e[?62;22c"
   of 'd': t.cy = clamp(arg(0) - 1, 0, t.h - 1)
+  of 'q':
+    # (XTVERSION: which terminal this is — ned, so that a program in it can tell, as ned itself asks its own)
+    if t.inter == ">" and arg(0, 0) == 0: t.reply.add "\eP>|ned " & Version & "\e\\"
   of 'h': t.setMode(ps, true)
   of 'l': t.setMode(ps, false)
   of 'm':

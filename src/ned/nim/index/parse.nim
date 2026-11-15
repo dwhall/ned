@@ -221,9 +221,9 @@ func nxBalance(t: string): int =
       elif ch in {')', ']', '}'}: dec result
 
 proc nxBlockValue*(lines: openArray[string], start, ind: int, val: string): string =
-  ## a value that goes on in the lines below — let x = if c:   /   case k   /   try:   /   block:   /   when c:
-  ## — as one line for the type to come from: "if c: <the first branch's last statement> …" (for `when`: the branch
-  ## taken here; for `block:` a variable of its own as what it holds)
+  ## a value that goes on in the lines below — let x = if c:   /   case k   /   try:   /   block:   /   when c:   /
+  ## if a and⏎ b: x⏎ else: y — as one line for the type to come from: "if c: <the first branch's last statement> …"
+  ## (for `when`: the branch taken here; for `block:` a variable of its own as what it holds)
   result = val
   var v = val.strip
   var start = start
@@ -290,13 +290,24 @@ proc nxBlockValue*(lines: openArray[string], start, ind: int, val: string): stri
   if (v.startsWith("if ") or v.startsWith("when ")) and not v.endsWith(":") and nxFindTop(v, ':') < 0:
     # if a and⏎ b:   the condition goes on below
     var l2 = start
+    var inline = false
     while l2 < lines.len and l2 - start < 8:
       let c2 = nxCodeOf(lines[l2])
       inc l2
       if c2.len == 0: continue
       v.add " " & c2
       if c2.endsWith(":"): break
+      if nxFindTop(c2, ':') >= 0:
+        inline = true                            # (if a and⏎ b: x⏎ else: y — each branch's value on its own line)
+        break
     start = l2
+    if inline:
+      for l3 in l2 ..< min(lines.len, l2 + 20):
+        let c3 = nxCodeOf(lines[l3])
+        if c3.len == 0: continue
+        if leadWs(lines[l3]) <= ind or not (c3.startsWith("elif ") or c3.startsWith("else:")): break
+        v.add " " & c3
+      return v
   let isCase = v.startsWith("case ")
   let isWhen = v.startsWith("when ")
   if not (isCase or (v.endsWith(":") and (v.startsWith("if ") or isWhen or v == "try:" or v == "block:"))):

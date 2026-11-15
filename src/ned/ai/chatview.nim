@@ -579,6 +579,9 @@ proc buildChat(width: int): seq[ChatLine] =
           if outsideProject(c):
             result.add wrapSpans(@[span(ic("warn") & " outside the project folder", theme.warn, theme.codeBg, {aBold})],
                                  width, theme.codeBg, 3)
+          if c.name in ["run_command", "acp:execute"] and aiNoSandbox() and c.name notin aiAlwaysAllow:
+            result.add wrapSpans(@[span(ic("warn") & " " & AiNoSandboxNote, theme.warn, theme.codeBg)],
+                                 width, theme.codeBg, 3)
           var shown = 0
           let dl = info.splitLines
           let cap = if isDiff: 22 else: 14

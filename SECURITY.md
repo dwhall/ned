@@ -57,11 +57,21 @@ Only the newest release gets security fixes — updating is always the remedy.
   refuse files of secrets as `read_file` does.
 - **MCP servers on the web** (`ai.mcpServers` with a `url`): the headers — a token — come to `ned --mcp-http` in its
   environment and go to curl in a private file (0600), never on a command line; `${NAME}` takes them from the
-  environment, so they need not be in the settings.
+  environment, so they need not be in the settings. A sign-in (`ned --mcp-login`, `ai/mcpauth`) is OAuth 2.1 with
+  PKCE and a state checked: the browser's answer comes to a port on 127.0.0.1 only, the token is kept in the state
+  folder (0700, the file 0600) and sent only to that server's address; a refresh token renews it.
+- **Where there is no sandbox** (no Landlock): `ai.autoApprove` "all" still asks before each of the assistant's
+  commands, unless `ai.sandbox` is off (`aiNoSandbox`).
+- **ACP agents in the sandbox** (`ai.agentSandbox`, off by default): the agent's own process under `ned --sandbox
+  --net --keep-env` — files changed only in the project, the caches, its temporary folder, its own home folders and
+  what its entry adds (`acpSandboxed`).
+- **GitHub Copilot** (`ai.copilot`): its language server gets the files you edit, not files of secrets
+  (`aiSecretFile`); the sign-in is Copilot's own (a code typed on GitHub's page).
 - **Before a commit** (`git.secretsCheck`): what the commit adds is read for secrets (core/secrets, as for the
   assistant) and for files of secrets; one found stops the commit until you say so.
-- **Releases** are signed: `SHA256SUMS.sig` by the key in `src/ned/app/release-signers`, checked by `ned --update`
-  (`releasecheck`). *Git: make a GitHub release…* signs with `git.releaseKey` in the namespace
+- **Releases** are signed: `SHA256SUMS.sig` by the key in `src/ned/app/release-signers`
+  (`SHA256:YHTcD3V1QUEyI8tpP487NPQ4y0Cap1kZxrGB2S4I/T8`, in ned from 6.52), checked by `ned --update`
+  (`releasecheck`) and install.sh. *Git: make a GitHub release…* signs with `git.releaseKey` in the namespace
   `<repository>-release`.
 - **A plugin asking the assistant** (`askAi`) needs the "ai" permission: what it sends goes to your provider, with
   your key, its secrets taken out first.

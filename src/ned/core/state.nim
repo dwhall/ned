@@ -209,6 +209,9 @@ var
   cfgTermShell = ""
   cfgTermIntegration = true
   cfgTermKeep = true                  # terminal.keepRunning
+  cfgTermSuggest = true               # terminal.suggest: suggestions while typing at the prompt
+  cfgTermClickMove = true             # terminal.clickToMove: a click on the command line moves the shell's cursor
+  cfgTermSticky = true                # terminal.stickyCommand: the command whose output is shown, at the top
   cfgTermScrollback = 3000
   cfgTermCwd = "project"
   cfgGitGutter = true

@@ -248,6 +248,9 @@ proc inSel(t: Term, absRow, col: int): bool =
 
 proc termCmdMenu(ti, ci: int)
 proc termClick(x, y: int)
+proc termHelpDraw(ti: int, x0, y0, w, h, gut: int)
+proc termSugKeyHit(t: Term, k: Key): bool
+proc termClickMove(t: Term, x, y: int): bool
 
 proc termLastRan(t: Term): int =
   ## the newest command that was run (-1: none)
@@ -399,6 +402,7 @@ proc drawTermPane(ti: int, x0, y0, w, h: int, focused: bool) =
         if tt.hosted: tt.hostSend('k', "")
         else: discard kill(tt.pid, SIGHUP))
     openMenu(items, mouseX, mouseY + 1))
+  termHelpDraw(ti, x0, y0, w, h, gut)        # (term/assist: the command on top, suggestions — over the rest)
 
 proc drawTerminal(x0, y0, w, h: int) =
   ## draws the terminal panel: starts the first terminal if there is none, makes sure a split is still valid, shows a
@@ -621,13 +625,14 @@ proc mouseToTerm(t: Term, x, y: int, press: bool, btn: int) =
 
 proc termClick(x, y: int) =
   ## a click in the terminal: when the program asked for the mouse and the view is live, sends it a press and a release;
-  ## otherwise it starts a selection at that cell
+  ## otherwise it starts a selection at that cell — on the command line being typed, the shell's cursor goes there too
   let t = curTermObj()
   if t == nil: return
   if t.mouseMode != 0 and t.view == 0:
     t.mouseToTerm(x, y, true, 0)
     t.mouseToTerm(x, y, false, 0)
     return
+  discard t.termClickMove(x, y)              # (on the command line being typed: the shell's cursor goes there)
   let (x0, y0, _, _) = termRect
   let absRow = t.sb.len - t.view + (y - y0)
   t.selA = (absRow, x - x0)
@@ -710,9 +715,9 @@ proc keyBytes(t: Term, k: Key): string =
 proc terminalKey(k: Key) =
   ## handles a key pressed while the terminal has the focus. Shift with PgUp, PgDn, Up or Down scrolls the scrollback;
   ## in a terminal whose shell has ended Enter starts a new one (a REPL tab starts its REPL again) and Esc returns to
-  ## the editor; Ctrl+Shift+C copies the selection; Ctrl+Up/Down browse the commands, then Alt+Enter opens the menu of
-  ## the one shown and Esc leaves; any other key goes to the shell, bringing the view back to live and dropping the
-  ## selection
+  ## the editor; Ctrl+Shift+C copies the selection; Ctrl+Space and then ↑/↓, Enter, Esc pick one of the suggestions
+  ## shown above the prompt; Ctrl+Up/Down browse the commands, then Alt+Enter opens the menu of the one shown and Esc
+  ## leaves; any other key goes to the shell, bringing the view back to live and dropping the selection
   let t = curTermObj()
   if t == nil: return
   if mShift in k.mods and k.kind in {kPgUp, kPgDn, kUp, kDown}:
@@ -738,6 +743,7 @@ proc terminalKey(k: Key) =
   if k.kind == kChar and mCtrl in k.mods and mShift in k.mods and k.ch in [ord('c'), ord('C')]:
     termCopySel()
     return
+  if t.termSugKeyHit(k): return               # (term/assist: the suggestions above the prompt, picked with keys)
   # commands (shell integration): Ctrl+↑/↓ go from one to the next, Alt+Enter opens the one shown, Esc goes back
   if k.kind in {kUp, kDown} and k.mods == {mCtrl} and (t.integrated or t.cmds.len > 0) and not t.altActive:
     t.termNav(if k.kind == kUp: -1 else: 1)

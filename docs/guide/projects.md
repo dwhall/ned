@@ -97,7 +97,10 @@ and installed packages it lands in open read-only (`files.protectLibraries`).
 - **Markdown**: *Markdown: open preview to the side* — or **M↓** in the status bar of a Markdown file — shows it
   rendered beside it, following your edits; again (or M↓ in the preview) closes it.
 - **Comparing**: *File: compare with saved* shows your unsaved changes as a diff, *File: compare with another file…*
-  two files side by side.
+  two files side by side. *File: compare two folders…* asks for two folders and lists the files that differ: those
+  changed (± — each opens as a diff, the first folder on the left), those only in the first (−) and those only in the
+  second (+); `.git`, `.hg` and `.svn` are left out. Run it again and the same two are listed at once, with *Other
+  folders…* at the top.
 
 ## Panes (tiling)
 

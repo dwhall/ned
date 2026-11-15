@@ -1059,4 +1059,12 @@ suite "found by the grades against the compiler (6.51)":
     check nxTypeOfExpr(f, sc, nxLocals(f, ls, 11, 0), "b", 11, 0).typ == "Body"
     check nxTypeOfExpr(f, sc, nxLocals(f, ls, 11, 0), "n", 11, 0).typ == "int"
 
+suite "found by the grades against the compiler (6.52)":
+  test "an if-expression whose condition goes on over the next line, each branch's value on its own line":
+    # (format/nim.nim's own: `let eq1 = if t0.kind == fkKw and …⏎ toks[a + 1].text in [...]: a⏎ else: fTopEq(…)`)
+    let (f, ls) = fixture("proc pick(a: int, s: string): int =\n  let e = if a > 1 and\n" &
+                          "             s.len > 2: a\n          else: s.len\n  echo e\n")
+    let sc = nxScope(f)
+    check nxTypeOfExpr(f, sc, nxLocals(f, ls, 4, 0), "e", 4, 0).typ == "int"
+
 removeDir(dir)

@@ -380,6 +380,7 @@ proc initCommands() =
   add("Git: accept both (conflict at cursor)", "", cmdConflict("both"))
   add("Git: next merge conflict", "", cmdConflict("next"))
   add("Git: compare with last commit (side by side)", "", cmdCompareHead())
+  add("File: compare two folders…", "the files that differ, then each one's changes", cmdCompareFolders())
   add("File: compare with another file…", "side by side", cmdCompareWithFile())
   add("Nim: sort imports", "", cmdSortImports())
   add("Nim: organize imports (remove unused, sort)", "", cmdOrganizeImports())
@@ -788,6 +789,10 @@ proc initCommands() =
   add("AI: new chat", "", aiNewChat())
   add("AI: attach a picture…", "a screenshot or a photo, for a model that reads pictures", aiAttachPicture())
   add("AI: stop", "", aiStop())
+  add("Copilot: sign in…", "GitHub Copilot's suggestions (ai.copilot): a code to type on GitHub's page",
+      cmdCopilotSignIn())
+  add("Copilot: sign out", "", cmdCopilotSignOut())
+  add("Copilot: next edit", "what Copilot would change next in this file", copilotNextEdit(buf(), quiet = false))
   add("AI: ask about selection", "", (block:
     showSide(svAssistant)
     if aiInput.len == 0:

@@ -208,11 +208,14 @@ compiler instead: Nim 2.4's `nim nif` writes its reading of every module of a pr
 declaration, each `let` and `var` with its type — and the engine is asked the same on ned's own source: Go to
 definition at every use (`--min`), and the type hint of every `let` and `var` written without its type
 (`--min-types`; the NIF's types as ned itself reads them: the driver's `nifhints`). The *grader* job runs it on
-`nedfmt.nim`, `index.nim` and `nedls.nim`; it lists the places that differ — the engine's to-do list.
+`nedfmt.nim`, `index.nim` and `nedls.nim`; it lists the places that differ — the engine's to-do list. An alias the
+engine names (`Hash`, `BiggestInt`, `File`) counts as the type the compiler writes out (`int`, `int64`, `ptr CFile`):
+the driver's `alias` follows it.
 
-**A big NIF** (over `NifReadMax`, 3 MB: `index.nim`'s is 4.3 MB, ned's own module with its includes 23 MB) is not
-read in the editor — its nodes would take twenty times the file, and the keys would wait. `nifFactsFor` and the
-typing check hand it to the engine worker (`wkNifFacts` → the worker's `niffacts` task), which reads it with
+**Every NIF goes to the worker** when there is one (6.52: a 3 MB one took half a second on a tablet, after each
+save). **A big NIF** (over `NifReadMax`, 3 MB: `index.nim`'s is 4.3 MB, ned's own module with its includes 23 MB)
+is never read in the editor — its nodes would take twenty times the file, and the keys would wait. `nifFactsFor`
+and the typing check hand it to the engine worker (`wkNifFacts` → the worker's `niffacts` task), which reads it with
 `nifParse`'s chunks — the nodes handed over each time a statement at the top, or at the top of an included file,
 ends, the statements still open first in each piece — and sends the facts back as JSON (`nifFactsJson`). The
 colours of the names are worked out at the end, once every declaration of the module is known. The 23 MB NIF:

@@ -136,6 +136,10 @@ jobs:
             https://api.github.com/repos/microsoft/vscode-js-debug/releases/latest |
             grep -o 'https://[^"]*js-debug-dap-v[^"]*tar.gz' | head -1)" | tar xz -C ~/.local/share ||
             echo "vscode-js-debug did not download: its tests are skipped"
+          # nushell, from its newest release (PowerShell, pwsh, is on GitHub's machines already)
+          (gh release download -R nushell/nushell -p 'nu-*-x86_64-unknown-linux-gnu.tar.gz' -O /tmp/nu.tar.gz &&
+           mkdir -p ~/.local/nu && tar -xzf /tmp/nu.tar.gz -C ~/.local/nu --strip-components=1 &&
+           echo "$HOME/.local/nu" >> "$GITHUB_PATH") || echo "nushell did not download: its checks are skipped"
           pip install --break-system-packages debugpy pytest coverage || pip install debugpy pytest coverage
           # (nimlangserver from its own release with its lock file: `nimble install nimlangserver` takes the newest of
           # what it needs, and faststreams 0.6 does not build in it)
@@ -214,7 +218,7 @@ jobs:
           nim c -d:release --hints:off -o:nedfmt.exe src/nedfmt.nim
       - name: Run them (ConPTY, LSP)
         run: |
-          python -m pip install --quiet pywinpty
+          python -m pip install --quiet pywinpty pyte
           python .github/ci/win_smoke.py ned.exe nedls.exe nedfmt.exe
 
   scoreboard:

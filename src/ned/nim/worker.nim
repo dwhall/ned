@@ -118,6 +118,10 @@ proc wkSettingsJson(): JsonNode =
   ## a copy of the settings as JSON, to send to the worker
   result = if settingsJ != nil: settingsJ.copy else: newJObject()
 
+var
+  wkNifSeq = 0                      # (the editor) the last request for a NIF's facts
+  wkNifWait: Table[int, proc(fx: NifFacts) {.closure.}]   # … what each request's facts go to
+
 proc wkStart(): bool =
   ## a worker running and told the folder, the settings and the toolchain — false when it cannot be
   if wkp != nil and not wkp.dead: return true
@@ -131,6 +135,8 @@ proc wkStart(): bool =
       if msSince(t) < WkDeathsWindowMs: keep.add t
     wkDeaths = keep
     wkStop()
+    wkNifWait.clear()            # (what it was reading is asked again: of the next worker, or read here)
+    nifAsked.clear()
     if wkDeaths.len >= WkDeathsMax:
       wkOffWhy = "the engine worker stopped " & $wkDeaths.len & " times (" & why & ") — the editor works it out itself"
       internalError("engine worker", newException(CatchableError, wkOffWhy))
@@ -160,16 +166,12 @@ proc wkStart(): bool =
   for b in bufs: b.wkLogFrom = -1
   true
 
-var
-  wkNifSeq = 0                      # (the editor) the last request for a big NIF's facts
-  wkNifWait: Table[int, proc(fx: NifFacts) {.closure.}]   # … what each request's facts go to
-
 proc wkNifFacts(path, nif: string, nim2: bool, alias: string, then: proc(fx: NifFacts) {.closure.}): bool =
-  ## (the editor) a big NIF's facts (nifFactsBuild), worked out by the worker: they go to `then` when they come —
-  ## false when there is no worker (they are not worked out then: a big NIF would hold up the keys)
+  ## (the editor) a NIF's facts (nifFactsBuild), worked out by the worker: they go to `then` when they come —
+  ## false when there is no worker (the editor reads it itself then, unless it is big: nifBig)
   if not wkOn() or not wkStart(): return false
   inc wkNifSeq
-  if wkNifWait.len > 32: wkNifWait.clear()
+  if wkNifWait.len > 256: wkNifWait.clear()
   wkNifWait[wkNifSeq] = then
   wkSend(%*{"op": "niffacts", "rid": wkNifSeq, "path": path, "nif": nif, "nim2": nim2, "alias": alias})
   true

@@ -384,6 +384,13 @@ proc initSettingDefs() =
        "sh, dash, ash, ksh, mksh, yash, elvish, xonsh, PowerShell and cmd.exe through ned, nushell by itself: " &
        "Ctrl+↑/↓ jumps between them, failed ones are marked, and a command's output can be copied or the command " &
        "run again")
+  defS("Terminal", "terminal.suggest", %true, "At a shell's prompt, suggestions as you type, above the line: your " &
+       "earlier commands, programs, files and folders, git branches, nimble tasks — tap one, or Ctrl+Space to pick " &
+       "with ↑/↓ and Enter (the shell must mark its commands: terminal.shellIntegration)")
+  defS("Terminal", "terminal.clickToMove", %true, "A click or tap on the command line you are typing moves the " &
+       "shell's cursor there (the shell must mark its commands)")
+  defS("Terminal", "terminal.stickyCommand", %true, "While a command's output fills the terminal, or you scroll " &
+       "through it, the command stays on the top row; a click there goes to its start")
   # ── Git ──
   defS("Git", "git.gutter", %true, "Added/modified/deleted marks next to line numbers")
   defS("Git", "git.autoRefresh", %true, "Refresh the git panel periodically while it is open")
@@ -655,6 +662,10 @@ proc initSettingDefs() =
   defS("AI", "ai.sandbox", %"on", "Linux: the commands the assistant and ACP agents run through ned are kept in a " &
        "sandbox (Landlock) — they change files only in the project and the caches, have no network, and get none of " &
        "the environment's secrets; net: the network is allowed; off: they run as you", @["on", "net", "off"])
+  defS("AI", "ai.agentSandbox", %false, "Linux: ACP agents (Claude Agent, Codex, Copilot …) run in ned's sandbox " &
+       "too — with the network and their keys, but changing files only in the project, the caches, a temporary " &
+       "folder and their own folders in your home (~/.claude, ~/.codex, ~/.copilot …); more in the agent's entry: " &
+       "\"writes\": [\"~/folder\"], \"reads\": […]")
   defS("AI", "ai.maxSteps", %30, "Maximum tool steps per request")
   defS("AI", "ai.checkEdits", %true, "Check the files the assistant edits (nim check; py_compile, node --check, cargo " &
        "check …) and tell it what is wrong, so it fixes its own mistakes before it says it is done")
@@ -667,6 +678,13 @@ proc initSettingDefs() =
        "answers sooner. The assistant can run the tool again")
   defS("AI", "ai.inlineCompletion", %false, "Grey inline suggestions while you type (Tab accepts) — sends code on every pause")
   defS("AI", "ai.inlineCompletionDelay", %700, "Pause in ms before an inline suggestion is requested")
+  defS("AI", "ai.copilot", %false, "GitHub Copilot writes the grey suggestions as you type (Tab takes them) and the " &
+       "next edits, instead of the model — through its language server, which needs Node.js 20.8 or newer; run " &
+       "Copilot: sign in… once (a Copilot plan on your GitHub account)")
+  defS("AI", "ai.copilotCommand", newJArray(), "How Copilot's language server starts (empty: copilot-language-server " &
+       "--stdio when it is installed, else npx -y @github/copilot-language-server --stdio)")
+  defS("AI", "ai.copilotNextEdits", %true, "After a Copilot suggestion is taken, ask Copilot whether something " &
+       "further on should change too (a note with Show; Copilot: next edit asks at any time)")
   defS("AI", "ai.nextEdit", %false, "Next-edit suggestions from AI: when an edit has no repeat in the file, the quick " &
        "model is asked what edit follows from it (shown as → … ⇥ (AI), Tab takes it) — sends the code around it")
   defS("AI", "ai.checkSuggestions", %true,
@@ -1214,6 +1232,9 @@ proc applySettings() =
   cfgTermCwd = sStr("terminal.cwd")
   cfgTermIntegration = sBool("terminal.shellIntegration")
   cfgTermKeep = sBool("terminal.keepRunning")
+  cfgTermSuggest = sBool("terminal.suggest")
+  cfgTermClickMove = sBool("terminal.clickToMove")
+  cfgTermSticky = sBool("terminal.stickyCommand")
   cfgGitGutter = sBool("git.gutter")
   cfgGitAutoRefresh = sBool("git.autoRefresh")
   cfgGitUntrackedAll = sStr("git.untrackedFiles") == "all"

@@ -480,10 +480,11 @@ made of each module, kept in ned's folder (`~/.cache/ned/nif`, never in the proj
   or Go to definition with no answer (`nim.compilerAnswers`): the compiler's reading has it. ned starts nimsuggest
   only when you turn it on (`nim.nimsuggest`) — hundreds of megabytes less on a phone.
 
-A module whose reading is very big — over 3 MB, one with many includes, as ned's own is (23 MB for all its
-files), or a huge generated one — is read by the engine worker (`nim.engineWorker`), in pieces of a statement at a
-time: the keys never wait for it, and it takes the memory of its biggest statement, not twenty times the file.
-Its colours, types and the rest come a moment after the check; without the worker they are left out, as before.
+The compiler's reading of a file is read by the engine worker (`nim.engineWorker`), so the keys never wait for it
+after a save, even on a tablet. A very big one — over 3 MB, one with many includes, as ned's own is (23 MB for all
+its files), or a huge generated one — is read in pieces of a statement at a time: it takes the memory of its biggest
+statement, not twenty times the file. Its colours, types and the rest come a moment after the check; without the
+worker the editor reads a small one itself and leaves a big one out, as before.
 
 While you type, the check after a pause reads the unsaved text the same way, and its colours, types, hover and Go
 to definition hold for the lines as they were then — a line you typed in above moves them along with it; a line

@@ -13,8 +13,9 @@ proc nifCacheBase(): string =
   getEnv("XDG_CACHE_HOME", getHomeDir() / ".cache") / AppName / "nif"
 
 const
-  NifReadMax = 3_000_000               # (bytes: a bigger NIF is read in the engine worker — its nodes take ~25 times
-                                       #  its size, and reading it would hold up the keys)
+  NifReadMax = 3_000_000               # (bytes: the editor reads no bigger NIF itself — its nodes take ~25 times its
+                                       #  size, and reading it would hold up the keys; the engine worker reads every
+                                       #  file's NIF when there is one)
   NifBigMax = 64_000_000               # (… and in pieces, of NifChunk nodes or more: one bigger is not read at all)
   NifChunk = 20_000
 
@@ -323,10 +324,10 @@ proc nifFactsOfJson(j: JsonNode): NifFacts =
 
 proc wkNifFacts(path, nif: string, nim2: bool, alias: string, then: proc(fx: NifFacts) {.closure.}): bool
 
-var nifAsked: HashSet[string]          # (big NIFs whose facts the worker is working out: not asked again meanwhile)
+var nifAsked: HashSet[string]          # (NIFs whose facts the worker is working out: not asked again meanwhile)
 
 proc nifBig(nif: string): bool =
-  ## a NIF too big to read in the editor: the worker reads it (nifFactsBuild's pieces)
+  ## a NIF too big to read in the editor when there is no worker (the worker reads it in nifFactsBuild's pieces)
   try: getFileSize(nif) > NifReadMax except CatchableError: false
 
 proc nifFactsFor(b: Buffer): NifFacts =
@@ -357,19 +358,20 @@ proc nifFactsFor(b: Buffer): NifFacts =
     old.stamp = st
     return old
   if nifFactsMemo.len > 32: nifFactsMemo.clear()
-  if nifBig(nif):
-    # (a module of many includes, or a huge one: the worker reads it, and its facts are here when they come)
-    let key = b.path & "|" & nif & "|" & $t.toUnixFloat
-    if key notin nifAsked:
-      if nifAsked.len > 64: nifAsked.clear()
-      nifAsked.incl key
-      let path = b.path
-      if not wkNifFacts(path, nif, not nim3, "", proc(fx: NifFacts) =
-           nifAsked.excl key
-           (fx.stamp, fx.nif, fx.nifTime) = (st, nif, t)
-           nifFactsMemo[path] = fx
-           needRender = true): nifAsked.excl key
-    return nifTyping.getOrDefault(b.path)
+  # (the worker reads it, and its facts are here when they come: no pause after a save — the editor reads it only
+  # when there is no worker, and not a big one then)
+  let key = b.path & "|" & nif & "|" & $t.toUnixFloat
+  if key in nifAsked: return nifTyping.getOrDefault(b.path)
+  if nifAsked.len > 256: nifAsked.clear()
+  nifAsked.incl key
+  let path = b.path
+  if wkNifFacts(path, nif, not nim3, "", proc(fx: NifFacts) =
+       nifAsked.excl key
+       (fx.stamp, fx.nif, fx.nifTime) = (st, nif, t)
+       nifFactsMemo[path] = fx
+       needRender = true): return nifTyping.getOrDefault(b.path)
+  nifAsked.excl key
+  if nifBig(nif): return nifTyping.getOrDefault(b.path)
   result = nifFactsBuild(b.path, nif, not nim3)
   (result.stamp, result.nif, result.nifTime) = (st, nif, t)
   nifFactsMemo[b.path] = result
@@ -761,7 +763,6 @@ proc nifTypingKeep(b: Buffer, nif: string, nim2: bool, alias: string) =
     if nifTyping.len >= 8 and path notin nifTyping: nifTyping.clear()
     nifTyping[path] = fx
     needRender = true
-  if nifBig(nif):
-    discard wkNifFacts(path, nif, nim2, alias, keep)      # (big: the worker reads it — none without a worker)
-    return
+  if wkNifFacts(path, nif, nim2, alias, keep): return     # (the worker reads it; the editor only when there is none)
+  if nifBig(nif): return                                    # (… and not a big one then: it would hold up the keys)
   keep(nifFactsBuild(path, nif, nim2, alias))

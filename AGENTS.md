@@ -90,7 +90,10 @@ A UI test that fails only on GitHub: run it with the runner's tools (Nim 2.4 on 
 A release is signed: the GitHub script signs `SHA256SUMS` with the owner's key on his device
 (`ssh-keygen -Y sign -n ned-release`, `~/.ssh/ned-release`) and uploads `SHA256SUMS.sig`; the key's public half is in
 `src/ned/app/release-signers`, so `ned --update` refuses a release that is not signed by it. Its private half never
-leaves his device: a release built elsewhere goes up through his script.
+leaves his device: a release built elsewhere goes up through his script. That script makes `SHA256SUMS` itself from
+the package, after checking the package's SHA-256 against the one built (written into the script) — never one
+downloaded beside it: a phone keeps an old `SHA256SUMS` and saves the new one under another name, and 6.51.0 went
+up with 6.49's.
 
 A problem someone reports from their machine: ask for a recording (`ned --record bug.rec FILE`, and whether
 `ned --safe` shows it too) and play it back here with `ned --replay bug.rec` before guessing from a screenshot —

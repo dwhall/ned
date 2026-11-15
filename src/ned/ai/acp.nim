@@ -20,6 +20,7 @@ type
     name, title, version: string   # its key in ai.agentServers; what it calls itself
     specKey: string                # the setting it was started from (a change starts it again)
     cmd: seq[string]
+    sandboxed: bool                # (6.52) it runs in ned's sandbox (ai.agentSandbox)
     pr: Proc
     inFd, outFd, errFd: cint
     rbuf, wbuf, errPart: string
@@ -186,6 +187,42 @@ proc acpStopAgent(why = "stopped") =
   inc aiVersion
   needRender = true
 
+proc acpSandboxed(a: AcpAgent, spec: JsonNode): seq[string] =
+  ## the agent's command inside ned's sandbox (ai.agentSandbox, Linux's Landlock): the network and its environment
+  ## (its key) kept, files changed only in the project, a temporary folder of its own, the caches and its own folders
+  ## and files in your home (~/.claude, ~/.codex, ~/.copilot …) — and what its entry adds ("writes", "reads"); @[] when
+  ## it runs as before (off, or no Landlock here)
+  if not sBool("ai.agentSandbox") or landlockAbi() == 0: return @[]
+  var p = SandboxPolicy(listAll: true, net: true, keepEnv: true)
+  p.read.add sandboxToolReads()
+  let home = getHomeDir().strip(leading = false, chars = {'/'})
+  let r = rootDir.strip(leading = false, chars = {'/'})
+  let priv = privDir().strip(leading = false, chars = {'/'})
+  # (the project — not when it is your home folder or holds ned's private folder, as for the assistant's commands)
+  if r.len > 0 and home != r and not home.startsWith(r & "/") and priv != r and not priv.startsWith(r & "/"):
+    p.write.add rootDir
+  else: p.read.add rootDir
+  let tmp = privDir() / "agent-tmp"
+  try:
+    createDir(tmp)
+    createDir(stateDir() / "mcp-auth")
+  except CatchableError: discard
+  p.write.add [tmp, stateDir() / "mcp-auth", getEnv("XDG_CACHE_HOME", home / ".cache")]
+  for d in [".claude", ".claude.json", ".claude.json.backup", ".codex", ".copilot", ".gemini", ".npm",
+            ".config/github-copilot", ".config/claude", ".local/share/claude", ".local/state/claude"]:
+    if fileExists(home / d) or dirExists(home / d): p.write.add home / d
+  # (where the agent and Node are installed, when that is under your home: nvm, volta, ~/.local …)
+  for d in [".nvm", ".volta", ".local", ".bun", ".npm-global", ".gitconfig", ".config/git"]:
+    if dirExists(home / d) or fileExists(home / d): p.read.add home / d
+  if a.cmd.len > 0:
+    var exe = findExe(a.cmd[0])
+    try: exe = expandFilename(exe)
+    except CatchableError: discard
+    if exe.len > 0: p.read.add parentDir(parentDir(exe))
+  for x in jitems(spec{"writes"}): p.write.add expandTilde(x.getStr)
+  for x in jitems(spec{"reads"}): p.read.add expandTilde(x.getStr)
+  result = @[getAppFilename(), "--sandbox", "--quiet"] & sandboxArgs(p) & @["--", "env", "TMPDIR=" & tmp] & a.cmd
+
 proc acpSpawn(a: AcpAgent, spec: JsonNode): bool =
   ## starts the agent's process with its own environment (ai.agentServers' "env", never on a command line), its pipes
   ## not blocking; false, with the state saying why, when it cannot be started
@@ -201,7 +238,9 @@ proc acpSpawn(a: AcpAgent, spec: JsonNode): bool =
       saved.add (k, getEnv(k), existsEnv(k))
       putEnv(k, v.getStr)
   try:
-    var p = spawnProc(a.cmd, rootDir, siPipe, erPipe)
+    let sb = acpSandboxed(a, spec)
+    var p = spawnProc(if sb.len > 0: sb else: a.cmd, rootDir, siPipe, erPipe)
+    a.sandboxed = sb.len > 0
     a.pr = p
     a.inFd = p.inFd
     a.outFd = p.outFd
@@ -299,8 +338,8 @@ proc acpEnsure(): AcpAgent =
 # ── the session: one conversation with the agent ──
 
 proc acpMcpServers(a: AcpAgent): JsonNode =
-  ## ned's MCP servers (ai.mcpServers, and its own Nim engine's, nedls --mcp), handed to the agent for its own use —
-  ## unless its entry says "mcpServers": false
+  ## ned's MCP servers (ai.mcpServers — those on the web through ned's bridge — and its own Nim engine's, nedls --mcp),
+  ## handed to the agent for its own use — unless its entry says "mcpServers": false
   result = newJArray()
   let spec = acpSpecOf(a.name)
   if spec != nil and spec{"mcpServers"} != nil and not spec{"mcpServers"}.getBool(true): return
@@ -317,11 +356,17 @@ proc acpMcpServers(a: AcpAgent): JsonNode =
   if all == nil or all.kind != JObject: return
   for name, sp in all:
     if sp.kind != JObject or sp{"disabled"}.getBool(false): continue
-    let cmd = acpCmdOf(sp)
-    if cmd.len == 0: continue
-    let exe = findExe(cmd[0])
+    var cmd = acpCmdOf(sp)
     var env = newJArray()
     for k, v in acpPairs(sp{"env"}): env.add %*{"name": k, "value": v.getStr}
+    if cmd.len == 0 and sp{"url"}.getStr.len > 0:
+      # (a server on the web: through ned's own bridge, as ned's assistant reaches it — its headers, ${VAR}s and
+      #  all, filled in by the bridge; a sign-in's token it reads from ned's private folder)
+      cmd = @[getAppFilename(), "--mcp-http", sp{"url"}.getStr]
+      env.add %*{"name": "NED_MCP_HEADERS", "value": $(if sp{"headers"} != nil and sp{"headers"}.kind == JObject:
+                                                          sp["headers"] else: newJObject())}
+    if cmd.len == 0: continue
+    let exe = findExe(cmd[0])
     var s = %*{"name": name, "command": (if exe.len > 0: exe else: cmd[0]), "args": %cmd[1 .. ^1], "env": env}
     if a.proto == 2: s["type"] = %"stdio"
     result.add s
@@ -725,8 +770,8 @@ proc acpKindClass(name: string): int =
 
 proc acpAutoAllow(c: AiCall): bool =
   ## whether ned allows what the agent asks by itself: never for a path outside the project, else by the kind of call
-  ## and ai.autoApprove (reads unless "none", changes with "edits" or "all", anything with "all") or a kind allowed
-  ## always in this chat
+  ## and ai.autoApprove (reads unless "none", changes with "edits" or "all", anything with "all" — but a command
+  ## where there is no sandbox: aiNoSandbox) or a kind allowed always in this chat
   let p = c.loc.split(':')[0]
   if p.len > 0:
     let q = absolutePath(expandTilde(p)).normalizedPath
@@ -735,7 +780,7 @@ proc acpAutoAllow(c: AiCall): bool =
   case acpKindClass(c.name)
   of 0: cfgAiApprove != "none"
   of 1: cfgAiApprove in ["edits", "all"]
-  else: cfgAiApprove == "all"
+  else: cfgAiApprove == "all" and not (c.name == "acp:execute" and aiNoSandbox())
 
 func acpPick(p: AcpPerm, kinds: openArray[string]): string =
   ## the id of the first of the agent's options of one of these kinds, in the order given ("" when it has none)
@@ -1030,7 +1075,9 @@ proc acpPump(ready: HashSet[cint]) =
       a.state = "failed: " & (if a.errTail.len > 0: a.errTail[^1] else: "it stopped")
     # (the answer under way ends first, saying why; then whatever else waited for the agent)
     if a.turn or a.waiting:
-      a.acpTurnEnd("error", "it stopped — " & a.state[8 .. ^1] & " (palette › AI: agent… shows its last words)")
+      a.acpTurnEnd("error", "it stopped — " & a.state[8 .. ^1] & " (palette › AI: agent… shows its last words)" &
+                   (if a.sandboxed: " — it ran in ned's sandbox (ai.agentSandbox): a folder it needs may go in its " &
+                                    "entry's \"writes\" or \"reads\", or turn the sandbox off" else: ""))
     let waiting = a.pending
     a.pending.clear()
     for id, (cb, _, _) in waiting: cb(nil, %*{"code": -32603, "message": "it stopped"})

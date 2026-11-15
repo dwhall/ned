@@ -44,7 +44,14 @@
   one an ACP agent asks ned to run, reads the system, Nim and the project, changes files only in the project, the
   caches and a temporary folder of its own, has no network (`"net"` gives it one) and gets none of the API keys and
   tokens in your environment — so a prompt hidden in a file cannot have it send your code or keys away, or change
-  your other files. Where there is no Landlock (Android, macOS, Windows) it runs as you, as before.
+  your other files. Where there is no Landlock (Android, macOS, Windows) it runs as you — so there ned asks before
+  each command even with `ai.autoApprove` at `all`, and says why (`ai.sandbox` off: it does not).
+- **Agents in a sandbox** (Linux 5.13 and newer, `ai.agentSandbox`, off by default): an ACP agent itself — Claude
+  Agent, Codex, Copilot — runs in it too, with the network and its keys, changing files only in the project, the
+  caches, a temporary folder and its own folders in your home ([the AI assistant](ai.md#agents-of-their-own-acp)).
+- **Sign-ins to MCP servers** (`ned --mcp-login`): the token is kept in ned's state folder, readable only by you
+  (0600), and goes to the server only; the browser's answer comes back on 127.0.0.1, and PKCE makes it useless to
+  anyone who sees it.
 - **No secrets in a commit** (`git.secretsCheck`): a commit that takes an API key, a token, a password or a file of
   secrets stops first and says where — [Git](git.md#checks-before-a-commit).
 - **Plugins in a sandbox** (Linux 5.13 and newer): a plugin's process reads the project and what it needs to run,
@@ -63,8 +70,8 @@
   checked before it is installed: its SHA-256 against the release's `SHA256SUMS`, and `SHA256SUMS` against its
   signature (`SHA256SUMS.sig`, made with the release key whose public half is in ned's source,
   `src/ned/app/release-signers`). A package that does not match, or a release without `SHA256SUMS`, is refused and
-  nothing is installed. From 6.51 on releases are signed; a ned built before its release key was in its source
-checks only the SHA-256, and says so. Checking a
+  nothing is installed. Releases are signed from 6.51 on, and from 6.52 ned has the release key in it: it installs
+  only a release signed with it (a ned built before checks only the SHA-256, and says so). Checking a
   signature needs `ssh-keygen` (Termux: `pkg install openssh`). A release you download yourself: `ned --update
   --verify DIR` checks the files in DIR the same way.
 - *File › Compare with saved* shows your unsaved changes as a diff.

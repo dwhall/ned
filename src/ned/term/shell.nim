@@ -120,7 +120,7 @@ if (-not $Global:__NedSI) {
     $Global:__NedReadLine = $function:PSConsoleHostReadLine
     function Global:PSConsoleHostReadLine {
       $line = & $Global:__NedReadLine
-      [Console]::Write("$([char]27)]133;C$([char]7)")
+      if ("$line".Trim()) { [Console]::Write("$([char]27)]133;C$([char]7)") }
       $line
     }
   }

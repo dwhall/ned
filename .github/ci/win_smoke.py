@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """ned on Windows, run as a person would: ned.exe in a Windows console (ConPTY, through pywinpty) — it starts, shows
-the file, takes keys, saves and quits; nedls.exe answers the Language Server Protocol (hover, completion, the
-file's symbols); nedfmt.exe formats.
+the file, takes keys, saves and quits; its terminal with cmd.exe and PowerShell marks their commands; nedls.exe
+answers the Language Server Protocol (hover, completion, the file's symbols); nedfmt.exe formats.
 
-  python .github/ci/win_smoke.py ned.exe nedls.exe nedfmt.exe        (pip install pywinpty)
+  python .github/ci/win_smoke.py ned.exe nedls.exe nedfmt.exe        (pip install pywinpty pyte)
 
 Each check prints PASS or FAIL; the exit status is the number that failed."""
 import json, os, subprocess, sys, tempfile, threading, time
@@ -33,8 +33,10 @@ with open(os.path.join(tmp, "config", "ned", "config.json"), "w") as f:
 try:
     from winpty import PtyProcess
 except ImportError:
-    check("pywinpty is installed (pip install pywinpty)", False)
-    sys.exit(1)
+    if os.name == "nt":
+        check("pywinpty is installed (pip install pywinpty)", False)
+        sys.exit(1)
+    from ptyprocess import PtyProcessUnicode as PtyProcess     # (trying the script where there is no Windows)
 
 p = PtyProcess.spawn([ned, src], dimensions=(32, 120), env=env, cwd=tmp)
 out = []
@@ -91,6 +93,66 @@ except Exception:
     code = None
 check("… with exit code 0", code in (0, None), code)
 if p.isalive(): p.terminate(True)
+
+
+# ── the terminal's shells: cmd.exe and PowerShell mark each command (OSC 133), and the panel's header says how the
+#    last one ended — ned's screen read back through a terminal emulator (pip install pyte) ──
+def shell_check(shell, line, want):
+    """ned with `shell` in its terminal: `line` typed there, then `want` looked for on ned's screen"""
+    with open(os.path.join(tmp, "config", "ned", "config.json"), "w") as f:
+        json.dump({"security.folderTrust": "off", "nim.nimsuggest": False, "terminal.shell": shell,
+                   "terminal.keepRunning": False}, f)
+    q = PtyProcess.spawn([ned, src], dimensions=(32, 120), env=env, cwd=tmp)
+    scr = pyte.Screen(120, 32)
+    st = pyte.Stream(scr)
+    got = []
+    stop = threading.Event()
+
+    def feed():
+        while not stop.is_set():
+            try:
+                s = q.read(4096)
+            except Exception:
+                break
+            if s: got.append(s)
+
+    threading.Thread(target=feed, daemon=True).start()
+
+    def shown(text, timeout):
+        end = time.time() + timeout
+        while time.time() < end:
+            while got: st.feed(got.pop(0))
+            if text in "\n".join(scr.display): return True
+            time.sleep(0.3)
+        return False
+
+    name = os.path.basename(shell)
+    ok = shown("hello.nim", 30)
+    if ok:
+        time.sleep(1.0)
+        q.write("\x1c")                              # Ctrl+\: the terminal, with the shell in it
+        time.sleep(6.0)                              # (PowerShell takes a while to start)
+        q.write(line + "\r")
+        ok = shown(want, 30)
+    check("the terminal with %s: %s marks the command, and the header says %r" % (name, name, want), ok,
+          "\n".join(scr.display))
+    stop.set()
+    if q.isalive(): q.terminate(True)
+
+
+try:
+    import pyte
+except ImportError:
+    pyte = None
+    check("pyte is installed (pip install pyte)", False)
+if pyte:
+    import shutil
+    if os.name == "nt":
+        shell_check("cmd.exe", "echo marked-652", "done · ")
+        shell_check("powershell.exe", "$n = 7; cmd /c exit $n", "✗ exit 7")
+        if shutil.which("pwsh"): shell_check(shutil.which("pwsh"), "$n = 7; cmd /c exit $n", "✗ exit 7")
+    else:                                            # (the script tried where there is no Windows)
+        shell_check("/bin/bash", "n=7; (exit $n)", "✗ exit 7")
 
 
 # ── the language server ──
