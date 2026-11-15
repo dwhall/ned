@@ -7,4 +7,4 @@
 #       echo "ned-release namespaces=\"ned-release\" $(cat ~/.ssh/ned-release.pub)"     (the line to put here)
 #     and builds releases with NED_SIGNING_KEY=~/.ssh/ned-release (tests/build/sums.sh then writes SHA256SUMS.sig).
 #     Until a key is here, ned and install.sh check only the SHA-256 of what they download, and say so.
-PLACEHOLDER-RELEASE-KEY
+ned-release namespaces="ned-release" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDF+Lb3HPMo/8ZA0otSs/HzewSuaibBUoVNZaIheXPDq
