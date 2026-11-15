@@ -349,7 +349,7 @@ type
                     lrSignature, lrReferences, lrExpand, lrInlay, lrCodeAction, lrResolve, lrOther,
                     lrWsSymbols, lrSemTokens, lrCallPrep, lrCallIn, lrCallOut,
                     lrTypeDef, lrImpl, lrHighlight, lrFolding, lrTypePrep, lrTypeSuper, lrTypeSub,
-                    lrPullDiag, lrLinks, lrOnType
+                    lrPullDiag, lrLinks, lrOnType, lrCall
   LspReq = object
     kind: LspReqKind
     bufId, version: int

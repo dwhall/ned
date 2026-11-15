@@ -1,5 +1,5 @@
-# the diff tab's keys, the commands that compare a file with its last commit or with another file, and the command that
-# opens a Markdown preview
+# the diff tab's keys, the commands that compare a file with its last commit or with another file, two folders (6.52),
+# and the command that opens a Markdown preview
 proc diffKey(k: Key): bool =
   ## keys in a diff tab: F7 / Shift+F7 between changes, Enter opens the line, r reverts; typing is ignored
   let b = buf()
@@ -82,6 +82,104 @@ proc cmdCompareWithFile() =
         openDiffView(extractFilename(pp) & " ↔ " & cur.name, other, relPath(pp), cur, @[], cur.name, cur.lang))
     if items.len > 20000: break
   openActions("Compare " & b.name & " with…", items)
+
+var cmpFolders: (string, string)          # the two folders compared last (the command lists them again at once)
+
+proc cmpFolderFiles(root: string): seq[string] =
+  ## the files under a folder, as paths from it — not in .git, .hg or .svn, nor through a link to a folder (a loop);
+  ## 50 000 at most
+  var found: seq[string]
+  proc walk(dir, rel: string) =
+    ## the files of one folder and of the folders in it
+    if found.len >= 50_000: return
+    try:
+      for kind, p in walkDir(dir, relative = true):
+        case kind
+        of pcDir:
+          if p notin [".git", ".hg", ".svn"]: walk(dir / p, rel & p & "/")
+        of pcLinkToDir: discard
+        else: found.add rel & p
+    except CatchableError: discard
+  walk(root, "")
+  found.sort()
+  found
+
+proc cmpFoldersShow(a, b: string) =
+  ## the files that differ between two folders, in a list — those in both whose contents differ (each opens as a
+  ## diff: the first folder's on the left), then those only in one; "Other folders…" first, to compare another two
+  cmpFolders = (a, b)
+  let fa = cmpFolderFiles(a)
+  let fb = cmpFolderFiles(b)
+  var inB: HashSet[string]
+  for p in fb: inB.incl p
+  var inA: HashSet[string]
+  for p in fa: inA.incl p
+  var items: seq[(string, string, Action)]
+  items.add act("Other folders…", "", proc() =
+    cmpFolders = ("", "")
+    runCmd("File: compare two folders…"))
+  var differ, onlyA, onlyB = 0
+  for p in fa:
+    if p notin inB: continue
+    var same = false
+    try: same = getFileSize(a / p) == getFileSize(b / p) and sameFileContent(a / p, b / p)
+    except CatchableError: discard
+    if same: continue
+    inc differ
+    let rel = p
+    capture rel:
+      items.add act("± " & rel, "changed", proc() =
+        var left: seq[string]
+        var right: seq[string]
+        try:
+          let ta = readFile(a / rel)
+          let tb = readFile(b / rel)
+          if '\0' in ta or '\0' in tb:
+            info(rel & ": binary files that differ")
+            return
+          left = textLines(ta)
+          right = textLines(tb)
+        except CatchableError as e:
+          error(e.msg)
+          return
+        let oi = bufIndexByPath(b / rel)
+        let live = if oi >= 0: bufs[oi] else: nil
+        openDiffView(extractFilename(rel), left, extractFilename(a) & "/" & rel, live, right,
+                     extractFilename(b) & "/" & rel, detectLang(rel, "")))
+  for p in fa:
+    if p notin inB:
+      inc onlyA
+      let rel = p
+      capture rel:
+        items.add act("− " & rel, "only in " & extractFilename(a), proc() = discard openFile(a / rel))
+  for p in fb:
+    if p notin inA:
+      inc onlyB
+      let rel = p
+      capture rel:
+        items.add act("+ " & rel, "only in " & extractFilename(b), proc() = discard openFile(b / rel))
+  if differ + onlyA + onlyB == 0:
+    info("The two folders have the same files: " & $fa.len)
+    return
+  openActions(extractFilename(a) & " ↔ " & extractFilename(b) & ": " & $differ & " changed, " & $onlyA & " only in " &
+              extractFilename(a) & ", " & $onlyB & " only in " & extractFilename(b), items)
+
+proc cmdCompareFolders() =
+  ## two folders compared, file by file: asks for them (the last two again: listed at once)
+  if cmpFolders[0].len > 0 and dirExists(cmpFolders[0]) and dirExists(cmpFolders[1]):
+    cmpFoldersShow(cmpFolders[0], cmpFolders[1])
+    return
+  askPath("First folder:", (if rootDir.len > 0: rootDir & "/" else: getCurrentDir() & "/"), proc(t: string) =
+    let a = absolutePath(expandTilde(t.strip)).normalizedPath
+    if not dirExists(a):
+      error("Not a folder: " & t)
+      return
+    askPath("Compare " & extractFilename(a) & " with:", parentDir(a) & "/", proc(t2: string) =
+      let b = absolutePath(expandTilde(t2.strip)).normalizedPath
+      if not dirExists(b) or b == a:
+        error("Not another folder: " & t2)
+        return
+      cmpFoldersShow(a, b)))
 
 proc cmdMarkdownPreview() =
   ## the Markdown file rendered, beside it; it follows your edits — again (or in the preview): the preview closed

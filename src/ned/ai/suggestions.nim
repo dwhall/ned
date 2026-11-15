@@ -1,4 +1,5 @@
-# ── inline AI suggestions (opt-in: ai.inlineCompletion) — grey text after the cursor, Tab accepts ──
+# ── inline AI suggestions (opt-in: ai.inlineCompletion, or GitHub Copilot's: ai.copilot) — grey text after the
+#    cursor, Tab accepts ──
 
 var
   ghostDropped = ""        # the last suggestion's name that does not exist (it was not shown)
@@ -9,6 +10,7 @@ var
   ghostJob: Job
   ghostAskedChange = -1
   ghostAskedBuf = -1
+  copilotItem: JsonNode    # (ai/copilot) the suggestion shown, when Copilot's — it is told when it is taken
 
 proc ghostVisible(b: Buffer): bool =
   ## whether the suggestion is still to be shown in this buffer: nothing has changed since it was made and the cursor is
@@ -20,6 +22,7 @@ proc ghostClear() =
   ## forgets the suggestion shown
   ghostText = ""
   ghostBuf = -1
+  copilotItem = nil
 
 var ghostFallback = ""     # the default suggestion model is not offered: use the chat model instead
 
@@ -40,11 +43,15 @@ proc ghostAccept(): bool =
   let b = buf()
   if not ghostVisible(b) or not b.canEdit(): return false
   let t = ghostText
+  let fromCopilot = copilotItem
   ghostClear()
   b.beginEdit()
   let p = b.replaceText(b.primary.head, b.primary.head, t)
   b.endEdit()
   b.setSingle(p)
+  if fromCopilot != nil:
+    copilotItem = fromCopilot
+    copilotTaken()                               # (Copilot's: it is told, and asked for the next edit)
   true
 
 var ghostWords: (int, int, HashSet[string])   # (buffer id, changeId, the names written in it)
@@ -330,6 +337,9 @@ proc aiFimAsk(pre, suf: string, maxTokens: int, onText: proc(t: string) {.closur
 proc ghostRequest(b: Buffer) =
   ## ask for a short continuation at the cursor (one request in flight; stale answers are dropped)
   if aiSecretFile(b.path): return                 # (a file of secrets is not sent: ai.redactSecrets)
+  if sBool("ai.copilot"):
+    copilotAsk(b)                                 # (GitHub Copilot's suggestions instead: ai/copilot)
+    return
   let p = b.primary.head
   if ghostJob != nil and not ghostJob.done: killProc(ghostJob.pr)
   ghostAskedChange = b.changeId
@@ -381,7 +391,7 @@ proc ghostRequest(b: Buffer) =
 
 proc ghostTick() =
   ## main loop: after a typing pause, request a suggestion at the cursor
-  if not sBool("ai.inlineCompletion") or focus != fEditor or compOpen or promptKind != pNone or
+  if not (sBool("ai.inlineCompletion") or sBool("ai.copilot")) or focus != fEditor or compOpen or promptKind != pNone or
      pickKind != pickNone or aiInlineMode or batterySave: return    # (battery saver: none as you type)
   let b = buf()
   if b.readOnly or b.path.len == 0 or b.cursors.len != 1 or b.primary.hasSel or not b.dirty: return

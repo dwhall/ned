@@ -198,8 +198,10 @@ include ned/term/shell
 include ned/term/vt
 include ned/term/repltabs
 include ned/term/panel
+include ned/term/assist
 include ned/ai/assistant
 include ned/ai/mcp
+include ned/ai/mcpauth
 include ned/ai/mcphttp
 include ned/ai/agenttools
 include ned/ai/enginetools
@@ -212,6 +214,7 @@ include ned/ai/oneshot
 include ned/ai/plan
 include ned/ai/offline
 include ned/ai/suggestions
+include ned/ai/copilot
 include ned/ai/acp
 include ned/editor/nextedit
 include ned/ai/chatview

@@ -119,7 +119,8 @@ search the project, edit or write a file, run a command, and read the problems. 
   only in the project, the caches and a temporary folder of their own, have no network (`"net"` allows it), and get
   none of the API keys and tokens in your environment. A command that fails there tells the agent so, and it asks
   you for more. The commands ACP agents ask ned to run are kept the same way. Elsewhere (Termux, macOS, Windows,
-  Linux before 5.13) commands run as you, as before.
+  Linux before 5.13) commands run as you: there, with `ai.autoApprove` at `all`, ned still asks before each command,
+  and the card says why. `ai.sandbox` set to `off` runs them without asking, as before.
 - **Plan first** (*AI: plan a change, then do it step by step…*, or `/plan …`): the assistant reads the code —
   editing and commands are refused while it plans — and answers with numbered steps. *Do it* runs them all
   (stopping when a step leaves errors), *One step* asks again after each, *Change the plan…* sends what should be
@@ -150,6 +151,18 @@ A server on the web (MCP's Streamable HTTP) needs no program: its address, and t
 
 ned talks to it through a bridge of its own (`ned --mcp-http`, with `curl`); the headers go to `curl` in a private
 file, never on a command line.
+
+A server on the web that asks you to sign in — Linear's, Notion's, GitHub's, a company's own — needs only its
+address. *MCP: sign in to a server…* (or `ned --mcp-login URL` in a terminal) finds where the server signs people
+in, registers ned there, and opens the sign-in page in your browser; the page sends the browser back to ned on a
+port of this machine (127.0.0.1 only), and ned trades its answer for a token (with PKCE, so the answer is of no use
+to anyone else). The token is kept in ned's state folder where only you may read it, sent to the server from then on,
+and renewed when it runs out; the same command signs you out. A server that does not let ned register itself needs
+its client id: `"clientId"` in its entry, or `ned --mcp-login URL CLIENT-ID`.
+
+```json
+{"ai.mcpServers": {"linear": {"url": "https://mcp.linear.app/mcp"}}}
+```
 
 A server's **prompts** are chat commands, `/server:name`, and its **resources** are mentions, `@server:uri`.
 *AI: MCP servers…* lists the servers — ready, starting or failed — with their tools, resources and prompts, and
@@ -184,8 +197,17 @@ and runs what it needs — and ned:
 - runs the commands it asks ned to run in the project, where your folder trust applies ([Safety](safety.md));
 - sends the file you are in, or the selection, with your message (`ai.includeFile`), the files and context you
   `@mention`, and your pictures when the agent takes them;
-- gives it your MCP servers (`ai.mcpServers`) to use itself, and in a Nim project ned's own engine as one more
-  (`nedls --mcp`, below); `"mcpServers": false` in its entry keeps them to ned.
+- gives it your MCP servers (`ai.mcpServers`) to use itself — those on the web through ned's bridge, with the
+  sign-ins you made — and in a Nim project ned's own engine as one more (`nedls --mcp`, below); `"mcpServers": false`
+  in its entry keeps them to ned.
+
+**The agent in ned's sandbox** (`ai.agentSandbox`, Linux): the agent itself runs inside it, not only the commands
+it asks ned to run. It keeps the network and its keys, reads the system and the project, and changes files only in
+the project, the caches, a temporary folder of its own and its own folders in your home (`~/.claude`,
+`~/.claude.json`, `~/.codex`, `~/.copilot`, `~/.gemini`, `~/.npm` …). An agent installed under your home is read
+where it is (nvm, volta, `~/.local` …). One that needs more says so when it fails; its entry can add folders:
+`"writes": ["~/.config/tool"]`, `"reads": ["~/models"]`. Off by default: each agent keeps its own things in its own
+places.
 
 The dock's top row shows the agent — a tap is *AI: agent…*: its state, its last words when it fails, signing in,
 restarting it —, its mode (a tap changes it), and the conversation's size and cost when the agent says them.
@@ -224,6 +246,21 @@ its entry starts it so).
   model that refuses it is asked as a chat model from then on.
 - **Next edits from AI** (`ai.nextEdit`, off by default): after an edit with no repeat in the file, the quick model
   is asked what edit follows from it — shown as `→ … ⇥ (AI)`, Tab takes it.
+
+### GitHub Copilot
+
+With `ai.copilot` on, GitHub Copilot writes the inline suggestions instead of the model: grey text after the cursor,
+Tab takes it, as above. After one is taken, Copilot is asked whether something further on in the file should change
+too; when it has a change, a note says where, and *Show* shows the lines as they are and as they would be, to apply
+or go to. *Copilot: next edit* asks at any time.
+
+- **Sign in once**: *Copilot: sign in…* shows a code — copied for you — and opens GitHub's page to type it in. It
+  needs a Copilot plan on your GitHub account (Copilot Free counts). *Copilot: sign out* signs out.
+- It runs Copilot's language server, `@github/copilot-language-server`: `copilot-language-server --stdio` when it is
+  installed, else through `npx`, so it needs Node.js 20.8 or newer (Termux: `pkg install nodejs`).
+  `ai.copilotCommand` starts it another way.
+- Copilot sees the files you edit, as its own editor plug-ins do — not files of secrets (`ai.redactSecrets`), nor a
+  file not saved yet. `ai.copilotNextEdits` off stops the asking after each suggestion.
 
 ## ned's engine for other agents: `nedls --mcp`
 

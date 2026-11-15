@@ -608,8 +608,11 @@ proc usage() =
   echo "  --sandbox [options] [--] CMD…  run CMD (and what it starts) so that it changes files only in this folder,"
   echo "                        reads only it and the system's, and has no network (Linux: Landlock) — the way"
   echo "                        plugins run: ned --sandbox --help"
-  echo "  --completions SHELL   print the Tab completion of ned's and nedfmt's options for bash, zsh or fish:"
+  echo "  --completions SHELL   print the Tab completion of ned's and nedfmt's options for bash, zsh, fish,"
+  echo "                        pwsh (PowerShell) or nu (nushell):"
   echo "                        ned --completions fish > ~/.config/fish/completions/ned.fish"
+  echo "  --mcp-login URL       sign in to an MCP server on the web (ai.mcpServers' \"url\"), in the browser: the"
+  echo "                        token is kept in ned's private folder and sent to it from then on"
   echo "  --default-settings    print the full settings file with every option and its default"
   echo "  --doc-settings, --doc-commands  every setting, every command of the palette, as Markdown (the docs)"
   echo "  --reset [--yes] [--keep-plugins]  remove ned's settings, sessions, history, caches and downloads: ned"
@@ -905,11 +908,12 @@ proc main() =
         echo AppName & " " & Version
         quit 0
       of "--mcp-http": quit mcpHttpMain(cl[ai - 1 .. ^1])      # (ai/mcphttp: an MCP server on the web, for ned itself)
+      of "--mcp-login": quit mcpLoginMain(cl[ai - 1 .. ^1])    # (ai/mcpauth: signing in to one, in the browser)
       of "--completions":
         let sh = if ai < cl.len: cl[ai] else: ""
         let s = shellCompletion(sh)
         if s.len == 0:
-          stderr.writeLine "ned --completions bash|zsh|fish: the Tab completion of ned's and nedfmt's options"
+          stderr.writeLine "ned --completions bash|zsh|fish|pwsh|nu: the Tab completion of ned's and nedfmt's options"
           quit 2
         stdout.write s
         quit 0

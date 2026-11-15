@@ -24,7 +24,7 @@ Made by **Sultan Al Isaiee** ([@foxoman](https://github.com/foxoman)) — [www.f
 
 ## Contents
 
-- [What's new in 6.51](#whats-new-in-651) · [6.50](CHANGELOG.md#whats-new-in-650) · [6.49](CHANGELOG.md#whats-new-in-649) · [6.48](CHANGELOG.md#whats-new-in-648) · [6.47.1](CHANGELOG.md#whats-new-in-6471) · [6.47](CHANGELOG.md#whats-new-in-647) · [6.46](CHANGELOG.md#whats-new-in-646) · [6.45](CHANGELOG.md#whats-new-in-645) · [6.44](CHANGELOG.md#whats-new-in-644) · [6.43.1](CHANGELOG.md#whats-new-in-6431) · [6.43](CHANGELOG.md#whats-new-in-643) · [6.42.1](CHANGELOG.md#whats-new-in-6421) · [6.42](CHANGELOG.md#whats-new-in-642) · [6.41.1](CHANGELOG.md#whats-new-in-6411) · [6.41](CHANGELOG.md#whats-new-in-641) · [6.40](CHANGELOG.md#whats-new-in-640) · [6.39](CHANGELOG.md#whats-new-in-639) · [6.38](CHANGELOG.md#whats-new-in-638) · [6.37](CHANGELOG.md#whats-new-in-637) · [6.36](CHANGELOG.md#whats-new-in-636) · [6.35](CHANGELOG.md#whats-new-in-635) · [6.34](CHANGELOG.md#whats-new-in-634) · [6.33](CHANGELOG.md#whats-new-in-633) · [6.32](CHANGELOG.md#whats-new-in-632) · [older releases](CHANGELOG.md)
+- [What's new in 6.52](#whats-new-in-652) · [6.51](CHANGELOG.md#whats-new-in-651) · [6.50](CHANGELOG.md#whats-new-in-650) · [6.49](CHANGELOG.md#whats-new-in-649) · [6.48](CHANGELOG.md#whats-new-in-648) · [6.47.1](CHANGELOG.md#whats-new-in-6471) · [6.47](CHANGELOG.md#whats-new-in-647) · [6.46](CHANGELOG.md#whats-new-in-646) · [6.45](CHANGELOG.md#whats-new-in-645) · [6.44](CHANGELOG.md#whats-new-in-644) · [6.43.1](CHANGELOG.md#whats-new-in-6431) · [6.43](CHANGELOG.md#whats-new-in-643) · [6.42.1](CHANGELOG.md#whats-new-in-6421) · [6.42](CHANGELOG.md#whats-new-in-642) · [6.41.1](CHANGELOG.md#whats-new-in-6411) · [6.41](CHANGELOG.md#whats-new-in-641) · [6.40](CHANGELOG.md#whats-new-in-640) · [6.39](CHANGELOG.md#whats-new-in-639) · [6.38](CHANGELOG.md#whats-new-in-638) · [6.37](CHANGELOG.md#whats-new-in-637) · [6.36](CHANGELOG.md#whats-new-in-636) · [6.35](CHANGELOG.md#whats-new-in-635) · [6.34](CHANGELOG.md#whats-new-in-634) · [6.33](CHANGELOG.md#whats-new-in-633) · [6.32](CHANGELOG.md#whats-new-in-632) · [older releases](CHANGELOG.md)
 - [Features](#features)
 - [Installing](#installing)
 - [First steps](#first-steps)
@@ -33,48 +33,43 @@ Made by **Sultan Al Isaiee** ([@foxoman](https://github.com/foxoman)) — [www.f
 
 ---
 
-## What's new in 6.51
+## What's new in 6.52
 
-**Every shell, every terminal.** The terminal marks each command — its prompt, its command line, its output and how
-it ended — in sh, dash, ash, ksh, mksh, yash, elvish, xonsh, PowerShell and cmd.exe, as it did in bash, zsh and
-fish; nushell marks them itself. (The POSIX shells have no hook before a command: the Enter you press is where one
-starts.) A split starts in the folder the shell is in (OSC 7), and VS Code's marks (OSC 633) are read too. A
-compiler's error, a `path:line` or a web link in the terminal opens with Ctrl+click — or from the right-click menu,
-on a tablet. ned asks the terminal it runs in for its name (XTVERSION), so pictures, progress and curly underlines
-are right over ssh and in tmux, where `TERM_PROGRAM` does not reach; inside zellij and screen pictures are drawn in
-cells. `ned --completions bash|zsh|fish` prints the Tab completion of ned's and nedfmt's options, and the Termux
-package installs it ([The terminal](docs/guide/terminal.md#shell-integration-the-commands-you-ran)).
+**Help at the prompt.** As you type in the terminal, ned suggests above the line what fits: commands you ran
+before, programs, files and folders, git branches, the project's nimble tasks. Tap one, or press Ctrl+Space and pick
+it with ↑/↓ and Enter; the shell gets the keys as before (`terminal.suggest`). A tap on the command line you are
+typing moves the shell's cursor there, so a typo is fixed without the arrow keys (`terminal.clickToMove`). While a
+command's output fills the terminal, or you scroll through it, the command stays on the top row; a tap there goes
+to its start (`terminal.stickyCommand`). PowerShell and nushell are now tested on every change, as the other shells
+are, and `ned --completions pwsh|nu` prints their Tab completion of ned's options. A program in ned's terminal that
+asks which terminal it is is told: ned ([The terminal](docs/guide/terminal.md)).
 
-**The assistant knows the code as ned does.** In a Nim project the assistant asks ned's engine — where a name is
-declared, every use of it, the type of an expression, which routines fit a signature, a file's outline — instead of
-reading whole files and guessing. `nedls --mcp` gives the same tools to any coding agent as an MCP server
-(`claude mcp add ned -- nedls --mcp`), and the agents in ned's AI dock get it by themselves. MCP servers on the web
-work too: `{"url": "https://…", "headers": {"Authorization": "Bearer ${TOKEN}"}}` in `ai.mcpServers`. GitHub
-Copilot is one of the agents *AI: choose agent…* adds with a tap. With Mistral (Codestral), DeepSeek and Ollama the
-inline suggestions are written by fill-in-the-middle — the code after the cursor goes with the code before it —
-which is quicker and fits better (`ai.inlineCompletionFim`) ([The AI assistant](docs/guide/ai.md)).
+**GitHub Copilot as you type.** With `ai.copilot` on, Copilot writes the grey suggestions (Tab takes them) through
+its language server, and after one is taken it says what else in the file should change too — *Show* to see the
+change and apply it, or *Copilot: next edit* at any time. *Copilot: sign in…* shows a code (copied) and opens
+GitHub's page to type it in. It needs Node.js 20.8 or newer (Termux: `pkg install nodejs`) and a Copilot plan on
+your GitHub account ([The AI assistant](docs/guide/ai.md#github-copilot)).
 
-**Safer by default.** On Linux the commands the assistant and the agents run through ned are kept in a sandbox
-(`ai.sandbox`): they change files only in the project and the caches, have no network, and get none of the API keys
-and tokens in your environment. A commit that would take an API key, a token, a password or a `.env` file stops
-first (`git.secretsCheck`): once pushed, a secret stays in the history. The API key can come from a password manager
-or the system's keyring (`ai.apiKeyCommand`) instead of the settings file. This release's SHA256SUMS is signed, and
-the next ned takes its key in: from then on `ned --update` installs only a release signed with it
-([Safety](docs/guide/safety.md)).
+**MCP servers that ask you to sign in.** A server on the web such as Linear's, Notion's or GitHub's signs you in in
+the browser: *MCP: sign in to a server…*, or `ned --mcp-login URL`. ned keeps the token where only you may read it
+and gets a new one when it runs out. The agents in ned's AI dock (Claude Agent, Codex, Copilot …) now get the
+servers on the web too, and can run inside ned's sandbox themselves (`ai.agentSandbox`): with the network, but
+changing files only in the project, the caches and their own folders ([The AI assistant](docs/guide/ai.md)).
 
-**GitHub from ned.** Approve a pull request, ask for changes or merge it; comment on a line of the branch's pull
-request (*Git: comment on this line in the pull request…*); open, comment on and close issues; a failed CI run's
-errors go to Problems, and its failed jobs can run again. *Git: make a GitHub release…* makes the tag, takes its
-notes from the CHANGELOG, attaches the files with their SHA256SUMS and signs them with your key (`git.releaseKey`)
-([Git](docs/guide/git.md#github)).
+**Safer where there is no sandbox.** Android, macOS and Windows have no Landlock, so the assistant's commands
+cannot be kept in the sandbox there. With `ai.autoApprove` at `all` ned still asks before each command on those
+systems, and says why; `ai.sandbox` off runs them without asking, as before. From this release `ned --update` and
+install.sh install only a release signed with ned's release key ([Safety](docs/guide/safety.md)).
 
-**Nim.** *Nim: build for another system…* builds the project for Windows, macOS, Linux or Android, with zig as the
-C compiler (Termux: `pkg install zig`). A module whose compiler output is very big — one with many includes, as
-ned's own is — now gets the compiler's types, colours and go to definition as well: the engine worker reads it in
-pieces, so the keys never wait for it ([Nim IDE](docs/guide/nim.md)). The engine knows what a template gives when
-its body is one expression — `template lines(w: Body): untyped = w.lr.lines` — so the names that come from it have
-their types and members too. Plugins can ask the assistant (`askAi`), with a permission of their own, "ai"
-([Plugins](docs/plugins/README.md#permissions)).
+**Compare two folders.** *File: compare two folders…* lists the files that differ — changed, only in one, only in
+the other — and each changed one opens as a diff; the next time, the same two are listed at once
+([Files, folders and projects](docs/guide/projects.md#tabs-and-panes)).
+
+**Nim and the rest.** The compiler's facts about a file are read in the engine worker after every save, whatever
+the file's size, so the keys never wait for them on a tablet. The engine gives the type of an `if` over several
+lines whose branches each have their value on their own line, and its grades against the compiler count an alias
+(`Hash`, `BiggestInt`) as the type it names. ty and pyrefly (Python), TypeScript's native server (tsgo) and Typst
+with tinymist are in ned's list of language servers.
 
 ## Features
 
@@ -245,7 +240,7 @@ ned
 ```
 
 or, from the project folder: `nimble termux` (ned, with `nedfmt` and `nedls` beside it) — or a ready-made package,
-`pkg install ./ned_6.51.0_aarch64.deb` (ned, nedls, nedfmt; the example plugins in `$PREFIX/share/ned/plugins`):
+`pkg install ./ned_6.52.0_aarch64.deb` (ned, nedls, nedfmt; the example plugins in `$PREFIX/share/ned/plugins`):
 `nimble termuxdeb` makes it on a Linux machine (with zig).
 
 The Nim IDE features need nothing more: the engine is built in, and `nim check` does the rest.

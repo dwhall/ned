@@ -79,6 +79,14 @@ proc lspRequest(s: LspServer, meth: string, params: JsonNode, req: LspReq): int 
   s.lspSend(%*{"jsonrpc": "2.0", "id": s.nextId, "method": meth, "params": params})
   s.nextId
 
+var lspCalls: Table[string, proc(res: JsonNode, err: string) {.closure.}]   # (lrCall: server uid:id → what is done)
+
+proc lspCall(s: LspServer, meth: string, params: JsonNode, then: proc(res: JsonNode, err: string) {.closure.}) =
+  ## a request whose answer goes to `then` — its result, or "" and the error's message
+  let id = s.lspRequest(meth, params, LspReq(kind: lrCall))
+  if lspCalls.len > 200: lspCalls.clear()
+  lspCalls[$s.uid & ":" & $id] = then
+
 proc lspNotify(s: LspServer, meth: string, params: JsonNode) =
   ## sends a notification (a message that takes no answer)
   s.lspSend(%*{"jsonrpc": "2.0", "method": meth, "params": params})
@@ -274,7 +282,13 @@ proc lspSpawn(id: string, c: seq[string], secondary: bool, ri = -1): LspServer =
                       "didChangeConfiguration": {"dynamicRegistration": false},
                       "inlayHint": {"refreshSupport": true}, "symbol": {}, "executeCommand": {}},
         "window": {"workDoneProgress": true}}}
-    if secondary: discard
+    if id == "copilot":
+      # (GitHub Copilot's language server: ai/copilot)
+      params["initializationOptions"] = %*{"editorInfo": {"name": AppName, "version": Version},
+                                            "editorPluginInfo": {"name": AppName, "version": Version}}
+      params["capabilities"]["window"]["showDocument"] = %*{"support": true}
+      s.name = "Copilot"
+    elif secondary: discard
     elif id == "nim":
       params["initializationOptions"] = nimSection()
       if ri >= 0 and params["initializationOptions"].hasKey("nimsuggestPath"):

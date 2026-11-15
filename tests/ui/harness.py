@@ -197,6 +197,8 @@ def setup(cfg=None):
     c["files.hotExit"] = False         # (quitting asks, as the tests were written; t_619_hot_exit turns it on)
     c["terminal.keepRunning"] = False  # (a test's shells end with its ned; t_629_kept_terminals keeps them)
     c["ui.cursorAnimation"] = "off"    # (screens read while the cursor glides would show its trail; t_629_cursor_glide)
+    c["terminal.suggest"] = False      # (no list over the terminal's lines as a test types; t_652_terminal_help)
+    c["terminal.clickToMove"] = False  # (a click focuses the terminal, as the tests were written; … and here)
     c.update(cfg or {})
     c = {k: v for k, v in c.items() if v is not None}
     json.dump(c, open(CFG + '/ned/config.json', 'w'))

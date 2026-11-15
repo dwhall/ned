@@ -197,6 +197,18 @@ def turn(sid, mid, prompt):
                 stop = 'cancelled'
                 break
             say(sid, 'tick ')
+    if 'zqwrite' in words:
+        # (6.52) the agent writes files itself, not through ned: one in the project, one in its home — ned's sandbox
+        # (ai.agentSandbox) lets only the first through
+        got = []
+        for name, path in [('inside', os.path.join(os.getcwd(), 'zq-agent-inside.txt')),
+                           ('outside', os.path.join(os.path.expanduser('~'), 'zq-agent-outside.txt'))]:
+            try:
+                open(path, 'w').write('x')
+                got.append(name + '=yes')
+            except OSError:
+                got.append(name + '=no')
+        say(sid, 'agent wrote ' + ' '.join(got) + '.')
     if 'hostile' in words:
         # nonsense of every kind: ned must go on, with nothing in its errors.log
         with out_lock:

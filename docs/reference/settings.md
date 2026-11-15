@@ -283,6 +283,9 @@ Every setting ned has, its default and what it does — made by `ned --doc-setti
 | `terminal.cwd` | `"project"` | Where new terminals start — one of: project, file |
 | `terminal.keepRunning` | `true` | Terminals keep running when ned quits or its window closes: the next ned in the same folder takes them back, with what they showed. Kill terminal ends one; Terminal: kept terminals… lists them all. Not on Windows, nor REPLs or a remote folder's terminal |
 | `terminal.shellIntegration` | `true` | the shell marks each command (OSC 133) — bash, zsh, fish, sh, dash, ash, ksh, mksh, yash, elvish, xonsh, PowerShell and cmd.exe through ned, nushell by itself: Ctrl+↑/↓ jumps between them, failed ones are marked, and a command's output can be copied or the command run again |
+| `terminal.suggest` | `true` | At a shell's prompt, suggestions as you type, above the line: your earlier commands, programs, files and folders, git branches, nimble tasks — tap one, or Ctrl+Space to pick with ↑/↓ and Enter (the shell must mark its commands: terminal.shellIntegration) |
+| `terminal.clickToMove` | `true` | A click or tap on the command line you are typing moves the shell's cursor there (the shell must mark its commands) |
+| `terminal.stickyCommand` | `true` | While a command's output fills the terminal, or you scroll through it, the command stays on the top row; a click there goes to its start |
 
 ## Git
 
@@ -348,6 +351,7 @@ Every setting ned has, its default and what it does — made by `ned --doc-setti
 | `ai.agent` | `true` | Agent mode: the assistant may read, search, edit files and run commands |
 | `ai.autoApprove` | `"reads"` | Which agent actions run without asking — one of: none, reads, edits, all |
 | `ai.sandbox` | `"on"` | Linux: the commands the assistant and ACP agents run through ned are kept in a sandbox (Landlock) — they change files only in the project and the caches, have no network, and get none of the environment's secrets; net: the network is allowed; off: they run as you — one of: on, net, off |
+| `ai.agentSandbox` | `false` | Linux: ACP agents (Claude Agent, Codex, Copilot …) run in ned's sandbox too — with the network and their keys, but changing files only in the project, the caches, a temporary folder and their own folders in your home (~/.claude, ~/.codex, ~/.copilot …); more in the agent's entry: "writes": ["~/folder"], "reads": […] |
 | `ai.maxSteps` | `30` | Maximum tool steps per request |
 | `ai.checkEdits` | `true` | Check the files the assistant edits (nim check; py_compile, node --check, cargo check …) and tell it what is wrong, so it fixes its own mistakes before it says it is done |
 | `ai.includeFile` | `true` | Send the current file (or selection) with each message |
@@ -357,6 +361,9 @@ Every setting ned has, its default and what it does — made by `ned --doc-setti
 | `ai.trimOldResults` | `true` | Long tool outputs (a file read, a command's output) of earlier questions are sent cut to their start and end — those of the question being answered in full: fewer tokens each step, answers sooner. The assistant can run the tool again |
 | `ai.inlineCompletion` | `false` | Grey inline suggestions while you type (Tab accepts) — sends code on every pause |
 | `ai.inlineCompletionDelay` | `700` | Pause in ms before an inline suggestion is requested |
+| `ai.copilot` | `false` | GitHub Copilot writes the grey suggestions as you type (Tab takes them) and the next edits, instead of the model — through its language server, which needs Node.js 20.8 or newer; run Copilot: sign in… once (a Copilot plan on your GitHub account) |
+| `ai.copilotCommand` | `[]` | How Copilot's language server starts (empty: copilot-language-server --stdio when it is installed, else npx -y @github/copilot-language-server --stdio) |
+| `ai.copilotNextEdits` | `true` | After a Copilot suggestion is taken, ask Copilot whether something further on should change too (a note with Show; Copilot: next edit asks at any time) |
 | `ai.nextEdit` | `false` | Next-edit suggestions from AI: when an edit has no repeat in the file, the quick model is asked what edit follows from it (shown as → … ⇥ (AI), Tab takes it) — sends the code around it |
 | `ai.checkSuggestions` | `true` | Nim: an inline suggestion that uses a name that does not exist here (a proc, a field the type does not have) is not shown — ned's engine checks it first |
 | `ai.inlineCompletionModel` | `""` | Model for inline suggestions (empty = a fast default for the provider) |

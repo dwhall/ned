@@ -133,6 +133,12 @@ proc lspHandle(s: LspServer, m: JsonNode) =
     of "workspace/applyEdit":
       applyWorkspaceEdit(s, m{"params", "edit"})
       s.lspReply(m["id"], %*{"applied": true})
+    of "window/showDocument":
+      # (a page to open — Copilot's sign-in at GitHub): a web address in the browser, a file in a tab
+      let uri = m{"params", "uri"}.getStr
+      if uri.startsWith("https://") or uri.startsWith("http://"): openInBrowser(uri)
+      elif uri.startsWith("file://"): discard openFile(pathFromUri(uri))
+      s.lspReply(m["id"], %*{"success": uri.len > 0})
     else:
       s.lspReply(m["id"], newJNull())
     return
@@ -141,6 +147,13 @@ proc lspHandle(s: LspServer, m: JsonNode) =
     if id notin s.pending: return
     let req = s.pending[id]
     s.pending.del id
+    if req.kind == lrCall:
+      let key = $s.uid & ":" & $id
+      let then = lspCalls.getOrDefault(key)
+      lspCalls.del key
+      if then != nil:
+        then(m{"result"}, (if m.hasKey("error"): (let e = m["error"]{"message"}.getStr; if e.len > 0: e else: "failed") else: ""))
+      return
     if m.hasKey("error"):
       if req.kind notin {lrCompletion, lrHover, lrPullDiag, lrLinks, lrOnType}:
         warn(s.name & ": " & m["error"]{"message"}.getStr)
@@ -175,6 +188,7 @@ proc lspHandle(s: LspServer, m: JsonNode) =
         for c in ".:<\"=/": s.triggers.incl c
       if s.langId == "nim": nimCfgWaitUntil = getMonoTime() + initDuration(milliseconds = 1500)
       s.lspNotify("initialized", newJObject())
+      if s.langId == "copilot": copilotReady(s)
       for b in bufs:
         if b.lang.id == s.langId: lspAttach(b)
       info(s.name & " ready" & (if s.secondary: " — its problems and quick fixes next to the main server's" else: ""))
@@ -371,6 +385,7 @@ proc lspHandle(s: LspServer, m: JsonNode) =
       emitShadowDiags(s, path, params)
       return
     lspSetDiags(s, path, params{"diagnostics"})
+  of "didChangeStatus": copilotStatus(params)     # (Copilot: signed in, or why it does not work)
   of "window/showMessage":
     let t = params{"type"}.getInt(3)
     let text = s.name & ": " & params{"message"}.getStr

@@ -303,3 +303,7 @@ when defined(nedMemProbe):
   proc memProbeTick(suffix: string)                               # app/memprobe_gen.nim (tests/memory/memprobe.py)
 proc plugJobDone(title: string, code: int, seconds: float)    # plugins/host.nim
 proc problemsFromText(source, text, cwd: string): int                # app/usercommands.nim
+proc copilotReady(s: LspServer)                                      # ai/copilot.nim
+proc copilotStatus(p: JsonNode)                                      # ai/copilot.nim
+proc copilotAsk(b: Buffer)                                           # ai/copilot.nim
+proc copilotTaken()                                                  # ai/copilot.nim

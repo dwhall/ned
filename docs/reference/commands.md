@@ -77,6 +77,9 @@ Every command of the palette (Ctrl+E, or Ctrl+P and `>`), with its key or what i
 | Compiler Explorer: compare with other options… | the assembly of two option sets in the diff view |
 | Compiler Explorer: options… | compiler, target, options, filters, execution |
 | Compiler Explorer: run the program after each compile (on / off) |  |
+| Copilot: next edit | what Copilot would change next in this file |
+| Copilot: sign in… | GitHub Copilot's suggestions (ai.copilot): a code to type on GitHub's page |
+| Copilot: sign out |  |
 | Copy | Ctrl+C |
 | Copy file path |  |
 | Copy info for bug report |  |
@@ -113,6 +116,7 @@ Every command of the palette (Ctrl+E, or Ctrl+P and `>`), with its key or what i
 | Expand selection | Alt+Shift+→ |
 | File: allow editing this file | read-only off |
 | File: clone from a link… | GitHub, GitLab, any git server |
+| File: compare two folders… | the files that differ, then each one's changes |
 | File: compare with another file… | side by side |
 | File: compare with saved |  |
 | File: EditorConfig for this file |  |
@@ -253,6 +257,7 @@ Every command of the palette (Ctrl+E, or Ctrl+P and `>`), with its key or what i
 | Macro: saved macros… |  |
 | Macro: start or stop recording | Alt+Shift+R |
 | Markdown: open preview to the side |  |
+| MCP: sign in to a server… | a server on the web that asks you to sign in: in the browser |
 | Menu bar | F10 |
 | Move line down | Alt+↓ |
 | Move line up | Alt+↑ |

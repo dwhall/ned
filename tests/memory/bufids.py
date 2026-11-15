@@ -13,6 +13,7 @@ SRC = os.path.join(os.path.dirname(os.path.dirname(HERE)), 'src')
 # (tables keyed by a buffer id that need not be forgotten: why)
 KEPT = {
     'embDocs': 'embClose, called when the tab closes, tells the language servers and lets it go',
+    'copilotDocs': 'copilotForget, called by bufForget: Copilot told the file closed, then the entry goes',
     'emitShadow': 'emitClose, called when the tab closes (the hidden C document of its emits)',
     'shadowChange': 'emitClose',
     'shadowSrv': 'emitClose',

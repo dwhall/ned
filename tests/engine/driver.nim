@@ -82,6 +82,23 @@ when isMainModule:
           let sc = nxScope(f)
           t = nxTypeOfExpr(f, sc, nxLocals(f, ls, line, col), j{"text"}.getStr, line, 0).typ
         ans["type"] = %t
+      of "alias":
+        # a type's name with its aliases followed to what they name (type Hash = int: int; File = ptr CFile)
+        var t = j{"type"}.getStr.strip
+        if f != nil:
+          let sc = nxScope(f)
+          for _ in 0 .. 5:
+            if nxBaseName(t) != t: break           # (a plain name only: a generic one would need its arguments put in)
+            var nxt = ""
+            for r in nxTypeSyms(sc, t):
+              let d = r.sym.typ.strip
+              if d.len > 0 and not d.startsWith("distinct") and d.find("object") < 0 and not d.startsWith("enum") and
+                 not d.startsWith("tuple") and not d.startsWith("concept") and not d.startsWith("proc"):
+                nxt = d
+              break
+            if nxt.len == 0 or nxt == t: break
+            t = nxt
+        ans["type"] = %t
       of "sug":
         var arr = newJArray()
         if f != nil:
