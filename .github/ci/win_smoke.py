@@ -10,6 +10,8 @@ import json, os, subprocess, sys, tempfile, threading, time
 
 ned, nedls, nedfmt = (os.path.abspath(x) for x in sys.argv[1:4])
 fails = 0
+# (a Windows runner's console is cp1252: the checks' names have ✗, — and ·)
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
 def check(name, ok, info=""):
