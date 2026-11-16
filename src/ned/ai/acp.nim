@@ -56,6 +56,7 @@ type
 var
   acp: AcpAgent                    # the agent ned talks to (nil: none started)
   acpWantNewSession = false        # a new chat: the next prompt opens a new session
+  acpWorkDir = ""                  # (6.53) the worktree this conversation works in ("" the project: ai/worktree)
 
 const
   AcpMaxText = 1_000_000           # the most of one reply the chat keeps (an agent that sends without end)
@@ -187,41 +188,126 @@ proc acpStopAgent(why = "stopped") =
   inc aiVersion
   needRender = true
 
-proc acpSandboxed(a: AcpAgent, spec: JsonNode): seq[string] =
-  ## the agent's command inside ned's sandbox (ai.agentSandbox, Linux's Landlock): the network and its environment
-  ## (its key) kept, files changed only in the project, a temporary folder of its own, the caches and its own folders
-  ## and files in your home (~/.claude, ~/.codex, ~/.copilot …) — and what its entry adds ("writes", "reads"); @[] when
-  ## it runs as before (off, or no Landlock here)
-  if not sBool("ai.agentSandbox") or landlockAbi() == 0: return @[]
+proc agentHomeDir(cmd: seq[string]): string =
+  ## the folder in your home an agent keeps its settings and sessions in, known by its name in the command ("" none)
+  for x in cmd:
+    let n = extractFilename(x).toLowerAscii
+    for (word, dir) in [("claude", ".claude"), ("codex", ".codex"), ("gemini", ".gemini"), ("copilot", ".copilot")]:
+      if word in n: return dir
+
+proc agentPolicy(cmd: seq[string], project: string, writes, reads: seq[string]): (SandboxPolicy, string) =
+  ## ned's sandbox for an agent (ai.agentSandbox, ned --sandbox-agent) and its temporary folder: the network and its
+  ## environment (its key) kept, files changed only in the project, a temporary folder of its own, the caches, npm's
+  ## cache, its own folder in your home (made when it is missing: Landlock gives only what exists) and files there
+  ## (~/.claude, ~/.codex, ~/.copilot …), the certificates its variables name, where it and Node are installed — and
+  ## what `writes` and `reads` add
   var p = SandboxPolicy(listAll: true, net: true, keepEnv: true)
   p.read.add sandboxToolReads()
   let home = getHomeDir().strip(leading = false, chars = {'/'})
-  let r = rootDir.strip(leading = false, chars = {'/'})
+  let r = project.strip(leading = false, chars = {'/'})
   let priv = privDir().strip(leading = false, chars = {'/'})
   # (the project — not when it is your home folder or holds ned's private folder, as for the assistant's commands)
   if r.len > 0 and home != r and not home.startsWith(r & "/") and priv != r and not priv.startsWith(r & "/"):
-    p.write.add rootDir
-  else: p.read.add rootDir
+    p.write.add project
+  elif project.len > 0: p.read.add project
   let tmp = privDir() / "agent-tmp"
   try:
     createDir(tmp)
     createDir(stateDir() / "mcp-auth")
   except CatchableError: discard
-  p.write.add [tmp, stateDir() / "mcp-auth", getEnv("XDG_CACHE_HOME", home / ".cache")]
+  let own = agentHomeDir(cmd)
+  if own.len > 0 and not dirExists(home / own):
+    try:
+      createDir(home / own)
+      setFilePermissions(home / own, {fpUserRead, fpUserWrite, fpUserExec})
+    except CatchableError: discard
+  let cache = getEnv("XDG_CACHE_HOME", home / ".cache")
+  try: createDir(cache)                                       # (a new home has none: Copilot unpacks itself there)
+  except CatchableError: discard
+  p.write.add [tmp, stateDir() / "mcp-auth", cache]
   for d in [".claude", ".claude.json", ".claude.json.backup", ".codex", ".copilot", ".gemini", ".npm",
             ".config/github-copilot", ".config/claude", ".local/share/claude", ".local/state/claude"]:
     if fileExists(home / d) or dirExists(home / d): p.write.add home / d
+  # (npm's cache where npm says it is — not always ~/.npm — for an agent npx runs)
+  if cmd.len > 0 and extractFilename(cmd[0]) in ["npx", "npm", "pnpm", "bunx"]:
+    var cache = getEnv("npm_config_cache")
+    if cache.len == 0:
+      let (ok, o, _) = runFilter("npm config get cache", "", getHomeDir(), 10_000)
+      if ok: cache = o.strip
+    if cache.len > 0 and cache.isAbsolute:
+      try: createDir(cache)
+      except CatchableError: discard
+      if dirExists(cache) and cache notin p.write: p.write.add cache
+  # (the certificates a proxy or a company network needs, where the environment says they are)
+  for v in ["NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "CURL_CA_BUNDLE", "REQUESTS_CA_BUNDLE",
+            "GIT_SSL_CAINFO"]:
+    let f = getEnv(v)
+    if f.len > 0 and f.isAbsolute and (fileExists(f) or dirExists(f)) and f notin p.read: p.read.add f
   # (where the agent and Node are installed, when that is under your home: nvm, volta, ~/.local …)
   for d in [".nvm", ".volta", ".local", ".bun", ".npm-global", ".gitconfig", ".config/git"]:
     if dirExists(home / d) or fileExists(home / d): p.read.add home / d
-  if a.cmd.len > 0:
-    var exe = findExe(a.cmd[0])
+  if cmd.len > 0:
+    var exe = findExe(cmd[0])
     try: exe = expandFilename(exe)
     except CatchableError: discard
     if exe.len > 0: p.read.add parentDir(parentDir(exe))
-  for x in jitems(spec{"writes"}): p.write.add expandTilde(x.getStr)
-  for x in jitems(spec{"reads"}): p.read.add expandTilde(x.getStr)
-  result = @[getAppFilename(), "--sandbox", "--quiet"] & sandboxArgs(p) & @["--", "env", "TMPDIR=" & tmp] & a.cmd
+  for x in writes: p.write.add absolutePath(expandTilde(x))
+  for x in reads: p.read.add absolutePath(expandTilde(x))
+  (p, tmp)
+
+proc acpSandboxed(a: AcpAgent, spec: JsonNode): seq[string] =
+  ## the agent's command inside ned's sandbox (ai.agentSandbox, Linux's Landlock: agentPolicy, with what its entry
+  ## adds — "writes", "reads"); @[] when it runs as before (off, or no Landlock here)
+  if not sBool("ai.agentSandbox") or landlockAbi() == 0: return @[]
+  var ws, rs: seq[string]
+  for x in jitems(spec{"writes"}): ws.add x.getStr
+  for x in jitems(spec{"reads"}): rs.add x.getStr
+  let (p, tmp) = agentPolicy(a.cmd, rootDir, ws, rs)
+  @[getAppFilename(), "--sandbox", "--quiet"] & sandboxArgs(p) & @["--", "env", "TMPDIR=" & tmp] & a.cmd
+
+const AgentSandboxUsage = """ned --sandbox-agent [--write PATH]… [--read PATH]… [--explain] [--] COMMAND [ARGUMENT…]
+  Runs an AI agent's program — claude, codex, gemini, copilot, or an ACP agent — in ned's sandbox for agents (Linux's
+  Landlock), the one ai.agentSandbox uses: it may use the network and keeps its key, changes files only in the
+  current folder (not when that is your home), its own folder in your home (~/.claude, ~/.codex, ~/.gemini,
+  ~/.copilot — made when missing), the caches and npm's, and a temporary folder of its own; it reads the system,
+  where it is installed, and the certificates its variables name. Elsewhere it runs without limits, and this is said.
+  --write PATH    may change files in PATH too
+  --read PATH     may read PATH too
+  --explain       say what is allowed before running
+  Example: ned --sandbox-agent -- claude"""
+
+proc agentSandboxMain(args: seq[string]): int =
+  ## ned --sandbox-agent [--write P] [--read P] [--explain] [--] CMD…: CMD in place of this process, in the agents'
+  ## sandbox
+  var ws, rs, extra: seq[string]
+  var i = 0
+  while i < args.len:
+    let a = args[i]
+    if a == "--":
+      inc i
+      break
+    if not a.startsWith("-"): break
+    case a
+    of "--write", "--read":
+      if i + 1 >= args.len:
+        stderr.writeLine("ned --sandbox-agent: " & a & " needs a path\n" & AgentSandboxUsage)
+        return 2
+      if a == "--write": ws.add args[i + 1] else: rs.add args[i + 1]
+      inc i
+    of "--explain": extra.add a
+    of "-h", "--help":
+      echo AgentSandboxUsage
+      return 0
+    else:
+      stderr.writeLine("ned --sandbox-agent: unknown option " & a & "\n" & AgentSandboxUsage)
+      return 2
+    inc i
+  if i >= args.len:
+    stderr.writeLine(AgentSandboxUsage)
+    return 2
+  let cmd = args[i .. ^1]
+  let (p, tmp) = agentPolicy(cmd, getCurrentDir(), ws, rs)
+  sandboxMain(extra & sandboxArgs(p) & @["--", "env", "TMPDIR=" & tmp] & cmd)
 
 proc acpSpawn(a: AcpAgent, spec: JsonNode): bool =
   ## starts the agent's process with its own environment (ai.agentServers' "env", never on a command line), its pipes
@@ -384,6 +470,10 @@ proc acpSignInHelp(a: AcpAgent, msg: string) =
 
 proc acpTurnEnd(a: AcpAgent, reason: string, errText = "")
 
+proc acpDir(): string =
+  ## the folder the conversation works in: the project, or its worktree (AI: agent in a worktree)
+  if acpWorkDir.len > 0: acpWorkDir else: rootDir
+
 proc acpNewSession(a: AcpAgent, then: proc() {.closure.}) =
   ## session/new in the project's folder, with ned's MCP servers; its modes, options and commands are kept. An agent
   ## that wants you to sign in first says so in the chat
@@ -412,7 +502,7 @@ proc acpNewSession(a: AcpAgent, then: proc() {.closure.}) =
     if a.state == "sign in": a.state = "ready"
     inc aiVersion
     then()
-  a.acpCall("session/new", %*{"cwd": rootDir, "mcpServers": a.acpMcpServers()}, onNew, 300_000)
+  a.acpCall("session/new", %*{"cwd": acpDir(), "mcpServers": a.acpMcpServers()}, onNew, 300_000)
 
 # ── what goes with your message ──
 
@@ -539,6 +629,7 @@ proc acpTurnEnd(a: AcpAgent, reason: string, errText = "") =
   saveChat()
   inc aiVersion
   needRender = true
+  if acpWorkDir.len > 0: wtTurnEnded()
 
 # ── what the agent sends while it works ──
 
@@ -900,9 +991,12 @@ proc acpWriteFile(a: AcpAgent, id, p: JsonNode) =
   if p{"path"}.getStr.len == 0 or p{"content"} == nil or p{"content"}.kind != JString:
     a.acpReplyErr(id, -32602, "fs/write_text_file needs a path and the content as text")
     return
-  let path = absolutePath(expandTilde(p{"path"}.getStr)).normalizedPath
+  let path = absolutePath(expandTilde(p{"path"}.getStr), acpDir()).normalizedPath
   if dirExists(path):
     a.acpReplyErr(id, -32602, path & " is a folder")
+    return
+  if acpWorkDir.len > 0 and not path.startsWith(acpWorkDir & "/"):      # (its worktree only: your files stay yours)
+    a.acpReplyErr(id, -32602, "this conversation works in its own worktree, " & acpWorkDir & ": " & path & " is outside it")
     return
   let (msg, isErr) = toolWriteFile(%*{"path": path, "content": p{"content"}.getStr})
   if isErr: a.acpReplyErr(id, -32603, msg)
@@ -935,7 +1029,7 @@ proc acpTermCreate(a: AcpAgent, id, p: JsonNode) =
   for e in jitems(p{"env"}):
     if e{"name"}.getStr.len > 0: envs.add quoteShell(e{"name"}.getStr & "=" & e{"value"}.getStr) & " "
   if envs.len > 0: line = "env " & envs & line
-  let cwd = if p{"cwd"}.getStr.len > 0: p{"cwd"}.getStr else: rootDir
+  let cwd = if p{"cwd"}.getStr.len > 0: p{"cwd"}.getStr else: acpDir()
   let j = startJob(jkTool, aiSandboxed(line)[0], cwd)       # (in ned's sandbox, as the assistant's own commands)
   if j == nil:
     a.acpReplyErr(id, -32603, "could not start " & p{"command"}.getStr)
@@ -1121,9 +1215,10 @@ proc acpStop() =
   needRender = true
 
 proc acpNewChat() =
-  ## a new chat: the agent's next prompt opens a new session (the agent keeps running); an answer under way is
-  ## stopped and what is left of it no longer shown
+  ## a new chat: the agent's next prompt opens a new session (the agent keeps running) in the project; an answer under
+  ## way is stopped and what is left of it no longer shown
   acpWantNewSession = true
+  acpWorkDir = ""
   if acp != nil:
     if acp.turn and acp.session.len > 0: acp.acpNotify("session/cancel", %*{"sessionId": acp.session})
     acp.acpPermsCancel()

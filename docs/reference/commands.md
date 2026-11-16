@@ -10,6 +10,7 @@ Every command of the palette (Ctrl+E, or Ctrl+P and `>`), with its key or what i
 | Add cursor below | Alt+J |
 | AI assistant | Alt+C |
 | AI: add doc comments |  |
+| AI: agent in a worktree | a new conversation with the agent on a branch of its own: your files are not touched |
 | AI: agent's mode… |  |
 | AI: agent's options… | model, effort … as the agent offers them |
 | AI: agent… | the agent in use: its state, mode and options, signing in, restarting it |
@@ -26,6 +27,7 @@ Every command of the palette (Ctrl+E, or Ctrl+P and `>`), with its key or what i
 | AI: fast / smart model |  |
 | AI: fix problem at cursor |  |
 | AI: fix problems in file |  |
+| AI: IDE link (Claude Code, Gemini CLI) | where they find ned, and who is connected (ai.ideLink) |
 | AI: make the failing test pass | the change kept only when the test then passes |
 | AI: MCP servers… |  |
 | AI: new chat |  |
@@ -34,7 +36,9 @@ Every command of the palette (Ctrl+E, or Ctrl+P and `>`), with its key or what i
 | AI: plan a change, then do it step by step… |  |
 | AI: regenerate last reply |  |
 | AI: review staged changes (findings in Problems) |  |
+| AI: review the agent's branch | each file the agent changed in its worktree, to take or leave; merge; remove |
 | AI: review the assistant's changes… |  |
+| AI: send to Claude Code | the file and the lines selected, as an @-mention in Claude Code's prompt |
 | AI: settings… |  |
 | AI: stop |  |
 | AI: the plan… (go on, change it, go back to a step) |  |

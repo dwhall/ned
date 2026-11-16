@@ -80,6 +80,7 @@ proc bufForget(id: int) =
   nxPreloaded.excl id
   wkRefsVer.del id
   copilotForget(id)              # (copilotDocs: Copilot told the file closed, then the entry goes)
+  ideDiffForget(id)              # (a change Claude Code or Gemini CLI proposed in it: rejected)
 
 proc projectForget() =
   ## another folder opened: what was kept about the last project's files goes (each is made again for the new one, or

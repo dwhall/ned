@@ -1,6 +1,55 @@
 # ned changelog
 
-The newest release is described in the [README](README.md#whats-new-in-6521). Older releases:
+The newest release is described in the [README](README.md#whats-new-in-653). Older releases:
+
+## What's new in 6.52.1
+
+**The engine sees what a program's include files import.** In a program put together with `include` — nedls is one:
+it includes ned.nim, then its own files — the files after the first had no types, hints or completions from the
+standard library, because the engine took a module's imports only from the module itself. Now a module sees what
+each of its include files imports, and an include file's `export` counts for the module. The engine also knows the
+type of `%x` (json's, not the number's) and the lets inside a routine whose body is a `(proc() = …)` over the lines
+below. Graded against the compiler on ned's own source, its types now agree everywhere they are graded — 5,793 lets
+and vars in `nedfmt`, the engine and nedls — and Go to definition on 99.9% or more; GitHub's check now asks for
+99.5% of both ([Nim IDE](docs/guide/nim.md)).
+
+## What's new in 6.52
+
+**Help at the prompt.** As you type in the terminal, ned suggests above the line what fits: commands you ran
+before, programs, files and folders, git branches, the project's nimble tasks. Tap one, or press Ctrl+Space and pick
+it with ↑/↓ and Enter; the shell gets the keys as before (`terminal.suggest`). A tap on the command line you are
+typing moves the shell's cursor there, so a typo is fixed without the arrow keys (`terminal.clickToMove`). While a
+command's output fills the terminal, or you scroll through it, the command stays on the top row; a tap there goes
+to its start (`terminal.stickyCommand`). PowerShell and nushell are now tested on every change, as the other shells
+are, and `ned --completions pwsh|nu` prints their Tab completion of ned's options. A program in ned's terminal that
+asks which terminal it is is told: ned ([The terminal](docs/guide/terminal.md)).
+
+**GitHub Copilot as you type.** With `ai.copilot` on, Copilot writes the grey suggestions (Tab takes them) through
+its language server, and after one is taken it says what else in the file should change too — *Show* to see the
+change and apply it, or *Copilot: next edit* at any time. *Copilot: sign in…* shows a code (copied) and opens
+GitHub's page to type it in. It needs Node.js 20.8 or newer (Termux: `pkg install nodejs`) and a Copilot plan on
+your GitHub account ([The AI assistant](docs/guide/ai.md#github-copilot)).
+
+**MCP servers that ask you to sign in.** A server on the web such as Linear's, Notion's or GitHub's signs you in in
+the browser: *MCP: sign in to a server…*, or `ned --mcp-login URL`. ned keeps the token where only you may read it
+and gets a new one when it runs out. The agents in ned's AI dock (Claude Agent, Codex, Copilot …) now get the
+servers on the web too, and can run inside ned's sandbox themselves (`ai.agentSandbox`): with the network, but
+changing files only in the project, the caches and their own folders ([The AI assistant](docs/guide/ai.md)).
+
+**Safer where there is no sandbox.** Android, macOS and Windows have no Landlock, so the assistant's commands
+cannot be kept in the sandbox there. With `ai.autoApprove` at `all` ned still asks before each command on those
+systems, and says why; `ai.sandbox` off runs them without asking, as before. From this release `ned --update` and
+install.sh install only a release signed with ned's release key ([Safety](docs/guide/safety.md)).
+
+**Compare two folders.** *File: compare two folders…* lists the files that differ — changed, only in one, only in
+the other — and each changed one opens as a diff; the next time, the same two are listed at once
+([Files, folders and projects](docs/guide/projects.md#tabs-and-panes)).
+
+**Nim and the rest.** The compiler's facts about a file are read in the engine worker after every save, whatever
+the file's size, so the keys never wait for them on a tablet. The engine gives the type of an `if` over several
+lines whose branches each have their value on their own line, and its grades against the compiler count an alias
+(`Hash`, `BiggestInt`) as the type it names. ty and pyrefly (Python), TypeScript's native server (tsgo) and Typst
+with tinymist are in ned's list of language servers.
 
 ## What's new in 6.51
 

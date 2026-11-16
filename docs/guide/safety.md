@@ -47,8 +47,15 @@
   your other files. Where there is no Landlock (Android, macOS, Windows) it runs as you — so there ned asks before
   each command even with `ai.autoApprove` at `all`, and says why (`ai.sandbox` off: it does not).
 - **Agents in a sandbox** (Linux 5.13 and newer, `ai.agentSandbox`, off by default): an ACP agent itself — Claude
-  Agent, Codex, Copilot — runs in it too, with the network and its keys, changing files only in the project, the
-  caches, a temporary folder and its own folders in your home ([the AI assistant](ai.md#agents-of-their-own-acp)).
+  Agent, Codex, Gemini CLI, Copilot — runs in it too, with the network and its keys, changing files only in the
+  project, the caches, a temporary folder and its own folders in your home ([the AI assistant](ai.md#agents-of-their-own-acp)).
+  `ned --sandbox-agent -- claude` runs an agent's own program in it from any terminal.
+- **An agent in a worktree** (*AI: agent in a worktree*): the agent works on a branch of its own, and what it asks
+  ned to write outside that worktree is refused; its changes reach your files only as you take them, file by file
+  ([the AI assistant](ai.md#an-agent-in-a-worktree)).
+- **The IDE link for Claude Code and Gemini CLI** (`ai.ideLink`): a server on 127.0.0.1 only; every request must
+  carry a random token kept in files only you can read, and one from a web page (an `Origin` header, another `Host`)
+  is refused; the files go when ned quits ([the AI assistant](ai.md#claude-code-and-gemini-cli)).
 - **Sign-ins to MCP servers** (`ned --mcp-login`): the token is kept in ned's state folder, readable only by you
   (0600), and goes to the server only; the browser's answer comes back on 127.0.0.1, and PKCE makes it useless to
   anyone who sees it.

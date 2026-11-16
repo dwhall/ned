@@ -1,5 +1,5 @@
 """ned's UI tests: every feature driven through tmux, the screen read back. Run them with run.py."""
-import shlex, subprocess, time, os, shutil, json, sys, re, glob, tempfile
+import shlex, subprocess, time, os, shutil, json, sys, re, glob, tempfile, socket
 # the helpers live in this module's namespace (a test can point W elsewhere for a while)
 exec(compile(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'harness.py')).read(), 'harness.py', 'exec'))
 
@@ -12376,7 +12376,9 @@ def t_652_shells():
             open(CFG + '/nushell/env.nu', 'w').write('')
         start('src/demo.nim', w=120, h=34, env_extra='HOME=' + TMP + ' POWERSHELL_UPDATECHECK=Off POWERSHELL_TELEMETRY_OPTOUT=1')
         time.sleep(0.5)
-        keys('C-\\'); time.sleep(5 if nm == 'pwsh' else 2)
+        keys('C-\\'); time.sleep(2)
+        # (PowerShell can take many seconds to start on a CI machine: what is typed before its prompt is lost)
+        if nm == 'pwsh': wait_for(r'PS /[^\n]*> ', 60); time.sleep(1.0)
         text('hi'); keys('Enter'); ok = wait_for('hello-from-rc', 15)
         check('652 %s: its own startup file is read' % nm, ok, screen())
         text('^false' if nm == 'nu' else 'false'); keys('Enter'); ok = wait_for('exit 1', 10); time.sleep(0.3)
@@ -12403,13 +12405,13 @@ def t_652_completions():
     for sh_ in ['pwsh', 'nu']:
         r = subprocess.run([BIN, '--completions', sh_], capture_output=True, text=True)
         check('652 completions: %s script' % sh_, r.returncode == 0 and 'ned' in r.stdout, r.stdout + r.stderr)
-        open(bindir + '/ned.' + sh_, 'w').write(r.stdout)
+        open(bindir + '/ned.' + {'pwsh': 'ps1'}.get(sh_, sh_), 'w').write(r.stdout)   # (PowerShell runs only .ps1 files)
     if which('nu'):
         r = subprocess.run(['nu', '-c', 'source ' + bindir + '/ned.nu; print (do $env.config.completions.external.completer '
                             '[ned --rec] | to json -r)'], capture_output=True, text=True, env=env, timeout=60)
         check('652 completions: nushell completes --rec to --record', r.stdout.strip() == '["--record"]', r.stdout + r.stderr)
     if which('pwsh'):
-        r = subprocess.run(['pwsh', '-NoProfile', '-Command', '. ' + bindir + '/ned.pwsh; (TabExpansion2 -inputScript '
+        r = subprocess.run(['pwsh', '-NoProfile', '-Command', '. ' + bindir + '/ned.ps1; (TabExpansion2 -inputScript '
                             "'ned --rec' -cursorColumn 9).CompletionMatches | ForEach-Object { $_.CompletionText }"],
                            capture_output=True, text=True, env=env, timeout=120)
         check('652 completions: PowerShell completes --rec to --record', r.stdout.split() == ['--record'], r.stdout + r.stderr)
@@ -12532,6 +12534,458 @@ def ftext_or_screen(f):
     # the file's text as saved, or the screen when it is not saved yet
     return screen() + ftext(f)
 
+def t_653_copilot_real():
+    # 6.53: GitHub Copilot's own language server (copilot-language-server, when it is on PATH or NED_TEST_PATH), in a
+    # home of its own with no GitHub token: ned answers its telemetry question with "off", says once that it is not
+    # signed in, then asks for no suggestions while you type; Copilot: sign in gives GitHub's code (or says why not);
+    # quitting ned asks the server to shut down and exit (as the protocol has it; then its process group is ended)
+    cls = shutil.which('copilot-language-server', path=TOOLS + ':' + os.environ.get('PATH', ''))
+    if not cls:
+        print('SKIP t_653_copilot_real: copilot-language-server is not installed (npm i -g @github/copilot-language-server)')
+        return
+    home, log = TMP + '/home653', TMP + '/copilot653.log'
+    shutil.rmtree(home, ignore_errors=True); os.makedirs(home)
+    if os.path.exists(log): os.remove(log)
+    fake = TMP + '/browser653'
+    os.makedirs(fake, exist_ok=True)
+    open(fake + '/xdg-open', 'w').write('#!/bin/sh\necho "$1" >> ' + TMP + '/opened653.txt\n')
+    os.chmod(fake + '/xdg-open', 0o755)
+    setup({"ai.copilot": True, "ai.copilotCommand": ["python3", MOCKS + "/lsptee.py", log, cls, "--stdio"],
+           "ai.inlineCompletionDelay": 300, "nim.nimsuggest": None})
+    open(W + '/real653.nim', 'w').write('proc add(a, b: int): int =\n  \n')
+    path = fake + ':' + os.path.dirname(os.path.realpath(cls)) + ':' + os.path.dirname(cls) + ':' + TOOLS + ':$PATH'
+    start('real653.nim', w=120, h=26, path=path,
+          env_extra='HOME=%s GH_TOKEN= GITHUB_TOKEN= GH_COPILOT_TOKEN= GITHUB_COPILOT_TOKEN= XDG_DATA_HOME=%s/.local/share'
+                    % (home, home))
+    keys('C-g'); text('2'); keys('Enter'); keys('End'); text('r')    # (Copilot starts with the first change)
+    time.sleep(0.4); keys('Escape')
+    ok = wait_for('not signed in', 40)
+    check('653 copilot real: it says it is not signed in', ok, screen() + (open(log).read()[-1500:] if os.path.exists(log) else ''))
+    got = open(log).read() if os.path.exists(log) else ''
+    check('653 copilot real: … it asked for its settings, and its telemetry is off',
+          '< workspace/configuration' in got and '"telemetryLevel": "off"' in got.replace('":"', '": "'), got[-1500:])
+    check('653 copilot real: … its telemetry events come to ned (which drops them)',
+          wait_until(lambda: '< uedTelemetry' in open(log).read() or '< codeSnippetTelemetry' in open(log).read(), 10),
+          got[:600])
+    asked = got.count('> textDocument/inlineCompletion')
+    for ch in 'esult = a':
+        text(ch); time.sleep(0.15)
+    time.sleep(3.0)
+    got = open(log).read()
+    check('653 copilot real: … then no suggestion asked while you type', got.count('> textDocument/inlineCompletion') <= max(asked, 1),
+          '\n'.join(l[:160] for l in got.splitlines() if 'inlineCompletion' in l))
+    palette('Copilot: sign in')
+    ok = wait_for(r'your code is [A-Z0-9]{4}-[A-Z0-9]{4}|Copilot: .*(rror|403|ailed|denied|network|fetch)', 40)
+    check('653 copilot real: Copilot: sign in gives GitHub\'s code, or says why not', ok, screen())
+    keys('Escape'); keys('C-s'); time.sleep(0.4); keys('C-q')
+    if wait_for('Unsaved changes', 3): keys('n')
+    wait_until(lambda: os.path.exists(W + '/exit'), 30)
+    got = open(log).read()
+    check('653 copilot real: quitting ned asks the server to shut down, then to exit', os.path.exists(W + '/exit') and
+          '> shutdown' in got and '> exit' in got.split('> shutdown', 1)[-1], screen() + got[-300:])
+
+def ide_files(kind):
+    # the IDE link's files of the ned under test: Claude Code's lock file, or Gemini CLI's discovery file (None)
+    d = TMP + ('/claude653/ide' if kind == 'claude' else '/tmp653/gemini/ide')
+    fs = sorted(glob.glob(d + ('/*.lock' if kind == 'claude' else '/gemini-ide-server-*.json')))
+    return fs[-1] if fs else None
+
+def ide_start(f='src/demo.nim', **kw):
+    # ned with the IDE link on, its files in this test's folders (never your ~/.claude or /tmp)
+    for d in [TMP + '/claude653', TMP + '/tmp653']:
+        shutil.rmtree(d, ignore_errors=True); os.makedirs(d)
+    setup({"ai.ideLink": True, **kw})
+    start(f, w=130, h=34, env_extra='CLAUDE_CONFIG_DIR=%s/claude653 TMPDIR=%s/tmp653' % (TMP, TMP))
+    wait_until(lambda: ide_files('claude') and ide_files('gemini'), 8)
+    lock = json.load(open(ide_files('claude')))
+    return lock
+
+def t_653_ide_claude():
+    # 6.53: Claude Code uses ned as its IDE — its lock file (only yours), the WebSocket with the token, the tools it
+    # calls (open a file with a selection, the selection, the open files, the folders, problems, unsaved changes,
+    # saving), the selection sent as it moves, a proposed change as a diff to accept (a) or reject (d), an @-mention;
+    # the files gone when ned quits
+    sys.path.insert(0, MOCKS)
+    import ideclient
+    lock = ide_start()
+    lp = ide_files('claude')
+    port, tok = int(os.path.basename(lp)[:-5]), lock.get('authToken', '')
+    check('653 ide claude: the lock file says where ned is, only you can read it',
+          lock.get('ideName') == 'ned' and lock.get('transport') == 'ws' and W in lock.get('workspaceFolders', []) and
+          len(tok) == 32 and (os.stat(lp).st_mode & 0o077) == 0, json.dumps(lock))
+    gp = ide_files('gemini')
+    check('653 ide claude: … and Gemini CLI\'s file too', gp and (os.stat(gp).st_mode & 0o077) == 0 and
+          json.load(open(gp)).get('port') == port, str(gp))
+    bad = ideclient.Ws(port, 'f' * 32); none = ideclient.Ws(port, None)
+    web = ideclient.Ws(port, tok, extra=b'Origin: https://evil.example\r\n')
+    check('653 ide claude: a wrong token, no token, a web page: turned away', bad.status == 401 and none.status == 401 and
+          web.status == 403, '%s %s %s' % (bad.status, none.status, web.status))
+    for x in [bad, none, web]: x.close()
+    c = ideclient.Ws(port, tok, proto='mcp')
+    check('653 ide claude: the right token: connected', c.status == 101 and b'Sec-WebSocket-Protocol: mcp' in c.head,
+          c.head.decode('latin-1'))
+    r = c.call('initialize', {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "claude-code"}})
+    check('653 ide claude: initialize', r and r['result']['serverInfo']['name'] == 'ned' and
+          r['result']['protocolVersion'] == '2025-06-18', str(r))
+    c.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+    names = [t['name'] for t in c.call('tools/list')['result']['tools']]
+    check('653 ide claude: its tools', set(names) >= {'openFile', 'openDiff', 'getCurrentSelection', 'getLatestSelection',
+          'getOpenEditors', 'getWorkspaceFolders', 'getDiagnostics', 'checkDocumentDirty', 'saveDocument', 'close_tab',
+          'closeAllDiffTabs'}, str(names))
+    wf = c.tool('getWorkspaceFolders')
+    check('653 ide claude: the project\'s folder', wf.get('rootPath') == W and wf['folders'][0]['path'] == W, str(wf))
+    ed = c.tool('getOpenEditors')
+    check('653 ide claude: the open files, the current one marked', any(t['label'] == 'demo.nim' and t['isActive']
+          for t in ed.get('tabs', [])), str(ed))
+    keys('C-g'); text('4'); keys('Enter'); keys('Home'); keys('S-End')       # (proc greet*… selected)
+    sel = c.wait_event('selection_changed', 8, lambda p: 'greet' in p.get('text', ''))
+    check('653 ide claude: the selection is sent as it moves', sel and sel['filePath'].endswith('/src/demo.nim') and
+          sel['selection']['start']['line'] == 3 and not sel['selection']['isEmpty'], str(sel))
+    cur = c.tool('getCurrentSelection')
+    check('653 ide claude: … and asked for', cur.get('success') and cur['text'].startswith('proc greet*'), str(cur))
+    check('653 ide claude: … the latest one too', c.tool('getLatestSelection').get('text', '').startswith('proc greet*'))
+    o = c.tool('openFile', {"filePath": W + '/src/demo/utils.nim', "startText": "proc", "endText": ":"})
+    time.sleep(0.5)
+    cur = c.tool('getCurrentSelection')
+    check('653 ide claude: openFile opens it, its text selected', 'Opened file' in str(o) and 'utils.nim' in screen() and
+          cur.get('filePath', '').endswith('utils.nim') and cur['text'].startswith('proc') and cur['text'].endswith(':'),
+          str(o) + str(cur))
+    d0 = c.tool('checkDocumentDirty', {"filePath": W + '/src/demo/utils.nim'})
+    keys('End'); text(' # 653'); time.sleep(0.4)
+    d1 = c.tool('checkDocumentDirty', {"filePath": W + '/src/demo/utils.nim'})
+    sv = c.tool('saveDocument', {"filePath": W + '/src/demo/utils.nim'})
+    check('653 ide claude: unsaved changes seen, saved when asked', d0.get('isDirty') is False and d1.get('isDirty') is True
+          and sv.get('saved') and '# 653' in ftext('src/demo/utils.nim'), '%s %s %s' % (d0, d1, sv))
+    nd = c.tool('checkDocumentDirty', {"filePath": W + '/nope.nim'})
+    check('653 ide claude: … a file not open: said so', nd.get('success') is False, str(nd))
+    open(W + '/bad653.nim', 'w').write('let x: int = "s"\n')
+    dg = c.tool('getDiagnostics')
+    check('653 ide claude: the problems, as a list per file', isinstance(dg, list), str(dg))
+    # a proposed change: accepted
+    path = W + '/src/demo.nim'
+    old = ftext('src/demo.nim')
+    c.nid += 1; c.send({"jsonrpc": "2.0", "id": c.nid, "method": "tools/call", "params": {"name": "openDiff", "arguments": {
+        "old_file_path": path, "new_file_path": path, "new_file_contents": old + "# from claude 653\n", "tab_name": "✻ [Claude] demo.nim"}}})
+    ok = wait_for('proposed by Claude Code', 8)
+    check('653 ide claude: openDiff shows the change as a diff', ok and 'from claude 653' in screen(), screen())
+    text('a')
+    r = c.recv(8)
+    while r is not None and r.get('id') != c.nid:
+        c.events.append(r); r = c.recv(8)
+    res = r and r['result']['content']
+    check('653 ide claude: a accepts it: Claude Code is told, with the text', res and res[0]['text'] == 'FILE_SAVED' and
+          res[1]['text'].endswith('# from claude 653\n'), str(r))
+    time.sleep(0.4)
+    check('653 ide claude: … the diff\'s tab closed', 'proposed by Claude Code' not in screen(), screen())
+    # … rejected
+    c.nid += 1; c.send({"jsonrpc": "2.0", "id": c.nid, "method": "tools/call", "params": {"name": "openDiff", "arguments": {
+        "old_file_path": path, "new_file_path": path, "new_file_contents": "nothing\n", "tab_name": "tab-653"}}})
+    wait_for('proposed by Claude Code', 8); text('d')
+    r = c.recv(8)
+    while r is not None and r.get('id') != c.nid:
+        c.events.append(r); r = c.recv(8)
+    res = r and r['result']['content']
+    check('653 ide claude: d rejects it', res and res[0]['text'] == 'DIFF_REJECTED' and res[1]['text'] == 'tab-653', str(r))
+    # … closed by Claude Code itself (it was answered in its own terminal)
+    c.nid += 1; pend = c.nid
+    c.send({"jsonrpc": "2.0", "id": pend, "method": "tools/call", "params": {"name": "openDiff", "arguments": {
+        "old_file_path": path, "new_file_path": path, "new_file_contents": "x\n", "tab_name": "tab-653b"}}})
+    wait_for('proposed by Claude Code', 8)
+    ct = c.tool('close_tab', {"tab_name": "tab-653b"})
+    time.sleep(0.4)
+    late = [e for e in c.events if e.get('id') == pend]
+    check('653 ide claude: close_tab closes it (and its openDiff is answered)', ct == 'TAB_CLOSED' and
+          'proposed by Claude Code' not in screen() and late and late[0]['result']['content'][0]['text'] == 'DIFF_REJECTED',
+          str(ct) + str(late))
+    # an @-mention
+    c.tool('openFile', {"filePath": path}); time.sleep(0.3)
+    keys('C-g'); text('5'); keys('Enter')
+    palette('AI: send to Claude Code'); time.sleep(0.3)
+    m = c.wait_event('at_mentioned', 8)
+    check('653 ide claude: AI: send to Claude Code — the file and its line', m and m['filePath'] == path and
+          m['lineStart'] == 4, str(m))
+    c.frame(9, b'p653')
+    op, p = c.read_frame(5)
+    while op not in (None, 10): op, p = c.read_frame(5)
+    check('653 ide claude: a ping is answered', op == 10 and p == b'p653', str(op))
+    c.close()
+    keys('C-q'); time.sleep(0.6)
+    if re.search(r'[Ss]ave', screen()): keys('n')
+    wait_until(lambda: os.path.exists(W + '/exit'), 8)
+    check('653 ide claude: quitting ned removes both files', not ide_files('claude') and not ide_files('gemini'),
+          '%s %s' % (ide_files('claude'), ide_files('gemini')))
+
+def t_653_ide_gemini_real():
+    # 6.53: the real Gemini CLI (npx @google/gemini-cli) started in ned's terminal, in a home of its own with no key
+    # of yours: it finds ned by itself and connects — its own line says the file ned has open. No prompt is sent
+    if not shutil.which('npx'):
+        print('SKIP t_653_ide_gemini_real: no npx (Node.js)')
+        return
+    home = TMP + '/home653g'
+    shutil.rmtree(home, ignore_errors=True); os.makedirs(home + '/.gemini')
+    json.dump({"ide": {"enabled": True}, "security": {"auth": {"selectedType": "gemini-api-key"}},
+               "general": {"disableAutoUpdate": True}}, open(home + '/.gemini/settings.json', 'w'))
+    for d in [TMP + '/claude653', TMP + '/tmp653']:
+        shutil.rmtree(d, ignore_errors=True); os.makedirs(d)
+    setup({"ai.ideLink": True})
+    json.dump({W: "TRUST_FOLDER"}, open(home + '/.gemini/trustedFolders.json', 'w'))
+    cache = subprocess.run(['npm', 'config', 'get', 'cache'], capture_output=True, text=True).stdout.strip()
+    start('src/demo.nim', w=150, h=40, env_extra='HOME=%s TMPDIR=%s/tmp653 CLAUDE_CONFIG_DIR=%s/claude653 '
+          'GEMINI_API_KEY=not-a-real-key npm_config_cache=%s GH_TOKEN= GITHUB_TOKEN=' % (home, TMP, TMP, cache))
+    time.sleep(0.5)
+    keys('C-\\'); time.sleep(2)
+    text('npx -y @google/gemini-cli'); keys('Enter')
+    ok = wait_for(r'1 open file|Gemini CLI is connected to ned', 180)
+    if 'Trust folder' in screen():
+        keys('Enter'); ok = wait_for(r'1 open file|Gemini CLI is connected to ned', 60)
+    check('653 ide gemini real: Gemini CLI connects to ned by itself, and sees the open file', ok, screen())
+    keys('C-c'); time.sleep(0.5); keys('C-c'); time.sleep(1.0)
+
+def t_653_ide_gemini():
+    # 6.53: Gemini CLI uses ned as its IDE — MCP over HTTP with the Bearer token, its event stream (what you are
+    # looking at as you move, the answers to its diffs), openDiff accepted, rejected, closed by Gemini CLI
+    sys.path.insert(0, MOCKS)
+    import ideclient
+    ide_start()
+    g = json.load(open(ide_files('gemini')))
+    port, tok = g['port'], g['authToken']
+    check('653 ide gemini: its file: the port, the project, ned', g['workspacePath'].split(':')[0] == W and
+          g['ideInfo'] == {"name": "ned", "displayName": "ned"}, json.dumps(g))
+    st0 = ideclient.rpc(port, None, 'initialize')[0]
+    st1 = ideclient.rpc(port, 'f' * 32, 'initialize')[0]
+    st2 = ideclient.http(port, 'POST', body=b'{}', token=tok, host='evil.example:%d' % port)[0]
+    st3 = ideclient.http(port, 'POST', body=b'{}', token=tok, headers={"Origin": "https://evil.example"})[0]
+    st4 = ideclient.http(port, 'POST', path='/other', body=b'{}', token=tok)[0]
+    check('653 ide gemini: no token, a wrong one, another Host, a web page, another path: turned away',
+          (st0, st1, st2, st3, st4) == (401, 401, 403, 403, 404), str((st0, st1, st2, st3, st4)))
+    keep = socket.create_connection(('127.0.0.1', port), timeout=10)
+    st, hd, b = ideclient.http(port, 'POST', body=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+        "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "gemini-cli"}}}).encode(), token=tok, sock=keep)
+    r = json.loads(b)
+    check('653 ide gemini: initialize, with a session id', st == 200 and r['result']['serverInfo']['name'] == 'ned' and
+          len(hd.get('mcp-session-id', '')) == 32, '%s %s %s' % (st, hd, b))
+    st, _, b = ideclient.http(port, 'POST', body=b'{"jsonrpc":"2.0","method":"notifications/initialized"}', token=tok, sock=keep)
+    check('653 ide gemini: a notification: 202, on the same connection', st == 202 and b == b'', str(st))
+    st, r = ideclient.rpc(port, tok, 'tools/list', sock=keep)
+    check('653 ide gemini: its tools', sorted(t['name'] for t in r['result']['tools']) == ['closeDiff', 'openDiff'], str(r))
+    st, _, b = ideclient.http(port, 'POST', body=b'[{"jsonrpc":"2.0","id":7,"method":"ping"},{"jsonrpc":"2.0","id":8,"method":"nope"}]',
+                              token=tok, sock=keep)
+    bat = json.loads(b) if b else []
+    check('653 ide gemini: a batch: each answered, an unknown method an error', len(bat) == 2 and bat[0]['result'] == {} and
+          bat[1]['error']['code'] == -32601, str(b))
+    st, _, b = ideclient.http(port, 'POST', body=b'{not json', token=tok, sock=keep)
+    check('653 ide gemini: not JSON: a parse error', st == 200 and json.loads(b)['error']['code'] == -32700, str(b))
+    ev = ideclient.Sse(port, tok)
+    m = ev.next('ide/contextUpdate', 8)
+    files = m and m['params']['workspaceState']['openFiles']
+    check('653 ide gemini: its stream: what you are looking at, at once', ev.status == 200 and files and
+          files[0]['path'] == W + '/src/demo.nim' and files[0]['isActive'] and files[0]['cursor']['line'] >= 1 and
+          m['params']['workspaceState']['isTrusted'] is True, str(m))
+    keys('C-g'); text('4'); keys('Enter'); keys('Home'); keys('S-End')
+    m = ev.next('ide/contextUpdate', 8, lambda p: p['workspaceState']['openFiles'][0].get('cursor', {}).get('line') == 4 and
+                'selectedText' in p['workspaceState']['openFiles'][0])
+    check('653 ide gemini: … again as you move, the selection with it', m and
+          'greet' in m['params']['workspaceState']['openFiles'][0].get('selectedText', ''), str(m))
+    path = W + '/src/demo.nim'
+    old = ftext('src/demo.nim')
+    st, r = ideclient.rpc(port, tok, 'tools/call', {"name": "openDiff", "arguments": {"filePath": path,
+                          "newContent": old + "# from gemini 653\n"}}, sock=keep)
+    ok = wait_for('proposed by Gemini CLI', 8)
+    check('653 ide gemini: openDiff answers at once and shows the diff', r['result']['content'] == [] and ok, str(r) + screen())
+    text('a')
+    m = ev.next('ide/diffAccepted', 8)
+    check('653 ide gemini: a accepts it: its stream says so, with the text', m and m['params']['filePath'] == path and
+          m['params']['content'].endswith('# from gemini 653\n'), str(m))
+    ideclient.rpc(port, tok, 'tools/call', {"name": "openDiff", "arguments": {"filePath": path, "newContent": "x\n"}}, sock=keep)
+    wait_for('proposed by Gemini CLI', 8); text('d')
+    m = ev.next('ide/diffRejected', 8)
+    check('653 ide gemini: d rejects it', m and m['params']['filePath'] == path, str(m))
+    ideclient.rpc(port, tok, 'tools/call', {"name": "openDiff", "arguments": {"filePath": path, "newContent": "y653\n"}}, sock=keep)
+    wait_for('proposed by Gemini CLI', 8)
+    st, r = ideclient.rpc(port, tok, 'tools/call', {"name": "closeDiff", "arguments": {"filePath": path}}, sock=keep)
+    time.sleep(0.4)
+    check('653 ide gemini: closeDiff closes it and gives its text back', r['result']['content'][0]['text'] == 'y653\n' and
+          'proposed by Gemini CLI' not in screen(), str(r))
+    st, r = ideclient.rpc(port, tok, 'tools/call', {"name": "closeDiff", "arguments": {"filePath": path}}, sock=keep)
+    check('653 ide gemini: … none open: an error', r['result'].get('isError') is True, str(r))
+    st, r = ideclient.rpc(port, tok, 'tools/call', {"name": "openDiff", "arguments": {"filePath": path}}, sock=keep)
+    check('653 ide gemini: openDiff without its text: an error', r['result'].get('isError') is True, str(r))
+    st, _, _ = ideclient.http(port, 'DELETE', token=tok, sock=keep)
+    check('653 ide gemini: DELETE ends its session', st == 200, str(st))
+    ev.close(); keep.close()
+
+def t_653_ide_hostile():
+    # 6.53: the IDE link against what no real client sends — unmasked or lying WebSocket frames, huge lengths, a long
+    # control frame, frames split anywhere, huge or endless headers, too many connections, random bytes — then the
+    # right request still answered and ned still drawing
+    sys.path.insert(0, MOCKS)
+    import ideclient, random
+    lock = ide_start()
+    port, tok = int(os.path.basename(ide_files('claude'))[:-5]), lock['authToken']
+    def closed_with(c, code):
+        # the close frame (and its reason's number) the server sent, else None
+        op, p = c.read_frame(5)
+        while op not in (None, 8): op, p = c.read_frame(5)
+        return int.from_bytes(p[:2], 'big') if op == 8 and len(p) >= 2 else None
+    c = ideclient.Ws(port, tok); c.frame(1, b'{"jsonrpc":"2.0","id":1,"method":"ping"}', mask=False)
+    check('653 ide hostile: an unmasked frame: closed (1002)', closed_with(c, 1002) == 1002); c.close()
+    c = ideclient.Ws(port, tok); c.s.sendall(bytes([0x81, 0xff]) + (1 << 40).to_bytes(8, 'big') + b'mask')
+    check('653 ide hostile: a frame of a terabyte: closed (1009)', closed_with(c, 1009) == 1009); c.close()
+    c = ideclient.Ws(port, tok); c.frame(9, b'x' * 200)
+    check('653 ide hostile: a ping of 200 bytes: closed (1002)', closed_with(c, 1002) == 1002); c.close()
+    c = ideclient.Ws(port, tok); c.frame(1, b'x', fin=False); c.frame(1, b'y')
+    check('653 ide hostile: a new message before the last one ended: closed', closed_with(c, 1002) == 1002); c.close()
+    c = ideclient.Ws(port, tok)
+    whole = json.dumps({"jsonrpc": "2.0", "id": 5, "method": "ping"}).encode()
+    c.frame(1, whole[:7], fin=False); c.frame(0, whole[7:20], fin=False); c.frame(0, whole[20:])
+    def answer(c, i):
+        # the answer with that id (notifications skipped: the selection is sent as it moves)
+        for _ in range(20):
+            r = c.recv(5)
+            if r is None or isinstance(r, list) or r.get('id') == i: return r
+        return None
+    r = answer(c, 5)
+    check('653 ide hostile: a message in three frames: answered', r and r.get('id') == 5, str(r))
+    raw = bytearray()
+    k = os.urandom(4)
+    p = json.dumps({"jsonrpc": "2.0", "id": 6, "method": "ping"}).encode()
+    raw += bytes([0x81, 0x80 | len(p)]) + k + bytes(x ^ k[i % 4] for i, x in enumerate(p))
+    for b in raw:
+        c.s.sendall(bytes([b])); time.sleep(0.002)
+    r = answer(c, 6)
+    check('653 ide hostile: a frame a byte at a time: answered', r and r.get('id') == 6, str(r))
+    c.frame(1, b'[1, "x", null, {"method": 5}, {"id": {"a": 1}, "method": "tools/call", "params": {"name": 7}}]')
+    r = answer(c, -1)
+    check('653 ide hostile: nonsense in a batch: errors, no crash', isinstance(r, list) and len(r) == 4, str(r))
+    c.close()
+    st = ideclient.http(port, 'GET', body=b'', headers={"X-Big": "a" * 70000})[0]
+    check('653 ide hostile: 70 KB of headers: 431', st == 431, str(st))
+    st = ideclient.http(port, 'POST', token=tok, headers={"Content-Length": str(20 * 1024 * 1024)})[0]
+    check('653 ide hostile: a body of 20 MB said: 413', st == 413, str(st))
+    s = socket.create_connection(('127.0.0.1', port), timeout=5); s.sendall(b'\x00\x01garbage\r\n\r\n')
+    check('653 ide hostile: not HTTP: 400', s.recv(100).startswith(b'HTTP/1.1 400')); s.close()
+    many = [socket.create_connection(('127.0.0.1', port), timeout=5) for _ in range(24)]
+    time.sleep(0.5)
+    shut = 0
+    for m in many:
+        m.settimeout(0.5)
+        try:
+            if m.recv(1) == b'': shut += 1
+        except socket.timeout: pass
+        except OSError: shut += 1
+    check('653 ide hostile: 24 connections at once: those past 16 closed', shut >= 8, str(shut))
+    for m in many: m.close()
+    rnd = random.Random(653)
+    for i in range(300):
+        try:
+            s = socket.create_connection(('127.0.0.1', port), timeout=2)
+            if i % 3 == 0:
+                s.sendall(bytes(rnd.getrandbits(8) for _ in range(rnd.randint(1, 3000))))
+            elif i % 3 == 1:
+                w = ideclient.Ws.__new__(ideclient.Ws); w.s = s
+                s.sendall(b'GET / HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nUpgrade: websocket\r\nSec-WebSocket-Key: a\r\n'
+                          b'x-claude-code-ide-authorization: %s\r\n\r\n' % (port, tok.encode()))
+                s.sendall(bytes(rnd.getrandbits(8) for _ in range(rnd.randint(1, 3000))))
+            else:
+                body = bytes(rnd.getrandbits(8) for _ in range(rnd.randint(0, 2000)))
+                s.sendall(b'POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nAuthorization: Bearer %s\r\nContent-Length: %d\r\n\r\n'
+                          % (port, tok.encode(), len(body)) + body)
+            s.close()
+        except OSError:
+            pass
+    time.sleep(0.5)
+    st, r = ideclient.rpc(port, tok, 'ping')
+    check('653 ide hostile: after 300 random connections: still answering', st == 200 and r.get('result') == {}, str(r))
+    keys('C-g'); text('1'); keys('Enter')
+    check('653 ide hostile: … and ned still drawing', 'demo.nim' in screen() and 'EXITED' not in screen(), screen())
+    s = socket.create_connection(('127.0.0.1', port), timeout=30); s.sendall(b'POST /mcp HTTP/1.1\r\nHost: 127')
+    t0 = time.time()
+    try:
+        s.settimeout(25); gone = s.recv(10) == b''
+    except socket.timeout:
+        gone = False
+    check('653 ide hostile: a request never finished: dropped after 15 s', gone and time.time() - t0 < 22, str(time.time() - t0))
+    s.close()
+
+def t_653_agent_worktree():
+    # 6.53: AI: agent in a worktree — the agent works on a branch of its own while your files stay as they are (a
+    # write outside its worktree refused); then its branch reviewed file by file: a change taken, a new file left, a
+    # deletion taken; the worktree and the branch removed
+    log = acp_setup()
+    start('src/demo.nim', w=140, h=40); time.sleep(0.8)
+    before = ftext('src/demo.nim')
+    palette('AI: agent in a worktree'); time.sleep(0.8)
+    s = dock_text(screen())
+    check('653 worktree: the chat says it works on a branch of its own', 'worktree of its own' in s and 'ned-agent/' in s, s)
+    text('wtwork'); keys('Enter')
+    ok = wait_until(lambda: re.search(r'worked in agent-[0-9-]+: ok ok outside=refused', dock_text(screen())), 20)
+    sess = acp_sent(log, 'session/new')
+    wt = sess[-1].get('cwd', '') if sess else ''
+    check('653 worktree: the agent works there (its session in the worktree), a write outside refused',
+          ok and '/ned-worktrees/agent-' in wt and os.path.exists(wt + '/NEW653.md'),
+          '%s | %s | %s | %s' % (ok, wt, os.path.exists(wt), os.listdir(wt) if os.path.exists(wt) else ''))
+    check('653 worktree: … your files untouched', ftext('src/demo.nim') == before and not os.path.exists(W + '/NEW653.md') and
+          os.path.exists(W + '/demo.nimble'))
+    ok = wait_for('done in its worktree', 8)
+    check('653 worktree: then a toast to review it', ok, screen())
+    palette("AI: review the agent's branch"); time.sleep(0.8)
+    sc = screen()
+    check('653 worktree: its branch: each file it changed', '± src/demo.nim' in sc and '+ NEW653.md' in sc and
+          '− demo.nimble' in sc, sc)
+    br = subprocess.run(['git', 'log', '--oneline', '-1', '--format=%s', [l for l in subprocess.run(['git', 'branch', '--list',
+          'ned-agent/*'], cwd=W, capture_output=True, text=True).stdout.split() if l.startswith('ned-agent/')][0]], cwd=W,
+          capture_output=True, text=True).stdout
+    check('653 worktree: … committed on the branch', "The agent's changes" in br, br)
+    text('src/demo'); time.sleep(0.3); keys('Enter'); time.sleep(0.8)
+    check('653 worktree: a file: its version beside yours', 'proposed by the agent' in screen() and 'by the agent 653' in screen(),
+          screen())
+    text('a'); time.sleep(0.8)
+    check('653 worktree: a takes it into your file', '# by the agent 653' in ftext('src/demo.nim'), ftext('src/demo.nim')[-200:])
+    sc = screen()
+    check('653 worktree: … and the list comes back', '+ NEW653.md' in sc, sc)
+    text('NEW653'); time.sleep(0.3); keys('Enter'); time.sleep(0.8); text('d'); time.sleep(0.8)
+    check('653 worktree: d leaves a new file out', not os.path.exists(W + '/NEW653.md'))
+    text('demo.nimble'); time.sleep(0.3); keys('Enter'); time.sleep(0.8)
+    check('653 worktree: a deletion shown as such', 'deleted this file' in screen(), screen())
+    text('a'); time.sleep(0.8)
+    check('653 worktree: … taken: deleted here too', not os.path.exists(W + '/demo.nimble'))
+    text('Remove the worktree'); time.sleep(0.3); keys('Enter'); time.sleep(1.0)
+    left = subprocess.run(['git', 'worktree', 'list'], cwd=W, capture_output=True, text=True).stdout
+    brs = subprocess.run(['git', 'branch', '--list', 'ned-agent/*'], cwd=W, capture_output=True, text=True).stdout
+    check('653 worktree: removed, with its branch', 'ned-worktrees' not in left and brs.strip() == '' and not os.path.exists(wt),
+          left + brs)
+
+def t_653_terminal_options():
+    # 6.53: the terminal suggests what nim, nimble and ned say they take — nim's commands, then its options from its
+    # own --fullhelp (a value of a few choices as each choice), ned's from --help — and a suggestion taken goes in
+    setup({"terminal.shell": "/bin/bash", "terminal.suggest": True})
+    start('src/demo.nim', w=130, h=34, path=os.path.dirname(os.path.abspath(BIN)) + ':' + TOOLS + ':$PATH', env_extra='HOME=' + TMP)
+    time.sleep(0.5)
+    keys('C-\\'); time.sleep(1.5)
+    text('nim co'); time.sleep(0.8)
+    check('653 terminal: nim\'s commands', 'compile' in screen() and 'nim' in screen(), screen())
+    keys('C-u'); time.sleep(0.2)
+    text('nim c --op'); time.sleep(0.4)
+    ok = wait_for(r'--opt:speed', 8)                 # (read from nim --fullhelp in the background, the first time)
+    s = screen()
+    check('653 terminal: nim\'s options, a value of a few choices as each', ok and '--opt:size' in s and '--opt:none' in s, s)
+    keys('C-u'); time.sleep(0.2)
+    text('ned --sand'); time.sleep(0.4)
+    ok = wait_for(r'--sandbox-agent', 8)
+    check('653 terminal: ned\'s own options, from its --help', ok and '--sandbox' in screen(), screen())
+    keys('C-u'); time.sleep(0.2)
+    text('nimble --ver'); time.sleep(0.4)
+    ok = wait_for(r'--verbose', 8)
+    check('653 terminal: nimble\'s', ok, screen())
+    keys('C-u'); time.sleep(0.2)
+    text('nim c --mm:o'); time.sleep(0.8)
+    pos = place_of('--mm:orc')
+    check('653 terminal: … --mm:orc offered', pos is not None, screen())
+    if pos:
+        click(*pos); time.sleep(0.5)
+        check('653 terminal: … a tap takes it', 'nim c --mm:orc' in screen(), screen())
+    keys('C-u')
+
 def t_652_compare_folders():
     # 6.52: File: compare two folders — the files that differ (not .git's), each opening as a diff; asked again: the
     # same two listed at once
@@ -12616,4 +13070,6 @@ tests = [t_edit_save_undo, t_find_replace, t_multicursor, t_project_search, t_te
          t_651_shells, t_651_terminal_folder_links, t_651_completions, t_651_agent_engine_sandbox,
          t_651_nedls_mcp, t_651_mcp_http, t_651_secrets_commit, t_651_fim,
          t_652_no_sandbox, t_652_shells, t_652_completions, t_652_terminal_help, t_652_agent_sandbox, t_652_copilot,
-         t_652_compare_folders, t_652_mcp_login]
+         t_652_compare_folders, t_652_mcp_login,
+         t_653_copilot_real, t_653_ide_claude, t_653_ide_gemini, t_653_ide_gemini_real, t_653_ide_hostile,
+         t_653_agent_worktree, t_653_terminal_options]

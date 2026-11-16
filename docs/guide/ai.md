@@ -204,10 +204,13 @@ and runs what it needs — and ned:
 **The agent in ned's sandbox** (`ai.agentSandbox`, Linux): the agent itself runs inside it, not only the commands
 it asks ned to run. It keeps the network and its keys, reads the system and the project, and changes files only in
 the project, the caches, a temporary folder of its own and its own folders in your home (`~/.claude`,
-`~/.claude.json`, `~/.codex`, `~/.copilot`, `~/.gemini`, `~/.npm` …). An agent installed under your home is read
+`~/.claude.json`, `~/.codex`, `~/.copilot`, `~/.gemini`, `~/.npm` …) — the agent's own folder is made when it is
+missing, npm's cache is where npm keeps it, and the certificates its variables name (`NODE_EXTRA_CA_CERTS`,
+`SSL_CERT_FILE` …) are read. An agent installed under your home is read
 where it is (nvm, volta, `~/.local` …). One that needs more says so when it fails; its entry can add folders:
 `"writes": ["~/.config/tool"]`, `"reads": ["~/models"]`. Off by default: each agent keeps its own things in its own
-places.
+places. `ned --sandbox-agent -- claude` (or `codex`, `gemini` …) runs an agent's own program in the same sandbox,
+from any terminal; `--write` and `--read` add folders, `--explain` says what it may do.
 
 The dock's top row shows the agent — a tap is *AI: agent…*: its state, its last words when it fails, signing in,
 restarting it —, its mode (a tap changes it), and the conversation's size and cost when the agent says them.
@@ -222,6 +225,43 @@ project's settings cannot choose or add an agent until you trust its folder.
 
 ned speaks version 1 of the protocol, and its draft version 2 with an agent that asks for it (`"protocol": 2` in
 its entry starts it so).
+
+## An agent in a worktree
+
+*AI: agent in a worktree* starts a new conversation with your agent on a branch of its own — a git worktree made
+from your last commit, kept in the repository's own folder (`.git/ned-worktrees`), so it is not in the file tree,
+the search or the project's files. The agent works there while you go on editing: what it reads, edits and runs is
+the worktree's, and your files are not touched — a write it asks ned for outside the worktree is refused. Changes
+you have not committed are not in it.
+
+When it has finished an answer that changed something, a toast offers *Review*. *AI: review the agent's branch*
+commits what it changed on its branch (`ned-agent/…`), then lists each file: ± changed, + new, − deleted. A file
+opens with its version beside yours: a takes it into your file — through its tab when it is open, so *AI: undo the
+assistant's changes…* gives yours back — and d leaves it; the list comes back for the next one. *Merge the whole
+branch* is `git merge` of it; *Remove the worktree and the branch* throws away what you did not take. A new chat
+(Ctrl+L) goes back to the project.
+
+## Claude Code and Gemini CLI
+
+Claude Code and Gemini CLI in a terminal use ned as their IDE, as they do VS Code (`ai.ideLink`, on). Run `claude`
+or `gemini` in ned's terminal and they find this ned at once; started in another terminal in the project, Claude
+Code finds it with `/ide`, and Gemini CLI connects once `/ide enable` is set. Then they:
+
+- see the file you are in and the lines you selected, as you move — ask about "this function" and they know which;
+- open files in ned, with the text they mean selected;
+- read the problems ned shows (the compiler's, the language servers', ned's own checks), and whether a file has
+  unsaved changes — and save it when they need to;
+- show each change they propose as a diff in a tab of its own, the file as it is on the left and the change on the
+  right: **a** accepts it, **d** rejects it (or the toast's *Accept*); closing the tab rejects it. They write the
+  file themselves, and its tab follows.
+
+*AI: send to Claude Code* puts the file and the lines you selected (or the cursor's line) in Claude Code's prompt as
+an @-mention. *AI: IDE link* says where they find ned and who is connected.
+
+ned listens on 127.0.0.1 only, on a port of its own, and tells the tools where in files only you can read —
+`~/.claude/ide/PORT.lock` (or `$CLAUDE_CONFIG_DIR/ide`) and `$TMPDIR/gemini/ide/` — with a token every request must
+carry; they go when ned quits. A request without it, or one from a web page (an `Origin`, or another `Host`), is
+turned away, so a site you visit cannot reach ned through it.
 
 ## In the editor
 
@@ -255,12 +295,15 @@ too; when it has a change, a note says where, and *Show* shows the lines as they
 or go to. *Copilot: next edit* asks at any time.
 
 - **Sign in once**: *Copilot: sign in…* shows a code — copied for you — and opens GitHub's page to type it in. It
-  needs a Copilot plan on your GitHub account (Copilot Free counts). *Copilot: sign out* signs out.
+  needs a Copilot plan on your GitHub account (Copilot Free counts). *Copilot: sign out* signs out. While you are
+  not signed in, a toast says so once, with *Sign in*, and no suggestion is asked for until you are.
 - It runs Copilot's language server, `@github/copilot-language-server`: `copilot-language-server --stdio` when it is
   installed, else through `npx`, so it needs Node.js 20.8 or newer (Termux: `pkg install nodejs`).
   `ai.copilotCommand` starts it another way.
 - Copilot sees the files you edit, as its own editor plug-ins do — not files of secrets (`ai.redactSecrets`), nor a
-  file not saved yet. `ai.copilotNextEdits` off stops the asking after each suggestion.
+  file not saved yet. `ai.copilotNextEdits` off stops the asking after each suggestion. ned tells its server that
+  telemetry is off and asks it to send its telemetry events to ned, which drops them (the server may still reach
+  GitHub's telemetry address now and then on its own).
 
 ## ned's engine for other agents: `nedls --mcp`
 

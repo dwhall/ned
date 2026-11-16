@@ -1103,4 +1103,49 @@ suite "an include file's imports (6.52)":
     let ls = readFile(dir / "inc" / "user2.nim").split('\n')
     check nxTypeOfExpr(f, nxScope(f), nxLocals(f, ls, 2, 0), "t", 2, 0).typ == "Table[string, int]"
 
+suite "include order (6.53)":
+  # (each case a folder of its own: the engine finds a file's includer in its folder)
+  proc lines(p: string): seq[string] = readFile(p).split('\n')
+  test "a name only an import in a file included later brings is flagged, once":
+    createDir(dir / "io1")
+    writeFile(dir / "io1" / "early.nim", "proc a(s: string): seq[string] =\n  s.split(',') & split(s, ';') & split(s)\n")
+    writeFile(dir / "io1" / "late.nim", "import std/strutils\nproc b(): int = 1\n")
+    writeFile(dir / "io1" / "top1.nim", "include early\ninclude late\n")
+    let f = nxLoad(dir / "io1" / "early.nim")
+    let got = nxIncludeOrder(f, lines(dir / "io1" / "early.nim"), 0, 5)
+    check got.len == 1
+    check got[0][0] == 1 and got[0][2] == "split" and got[0][3].endsWith("late.nim")
+  test "… not when the file is included after it, imports it itself, or the top module does":
+    createDir(dir / "io2")
+    writeFile(dir / "io2" / "early.nim", "proc a(s: string): seq[string] = split(s, ';')\n")
+    writeFile(dir / "io2" / "late.nim", "import std/strutils\n")
+    writeFile(dir / "io2" / "top2.nim", "include late\ninclude early\n")
+    check nxIncludeOrder(nxLoad(dir / "io2" / "early.nim"), lines(dir / "io2" / "early.nim"), 0, 5).len == 0
+    createDir(dir / "io3")
+    writeFile(dir / "io3" / "early.nim", "import std/strutils\nproc a(s: string): seq[string] = split(s, ';')\n")
+    writeFile(dir / "io3" / "late.nim", "import std/strutils\n")
+    writeFile(dir / "io3" / "top3.nim", "include early\ninclude late\n")
+    check nxIncludeOrder(nxLoad(dir / "io3" / "early.nim"), lines(dir / "io3" / "early.nim"), 0, 5).len == 0
+    createDir(dir / "io4")
+    writeFile(dir / "io4" / "early.nim", "proc a(s: string): seq[string] = split(s, ';')\n")
+    writeFile(dir / "io4" / "late.nim", "import std/strutils\n")
+    writeFile(dir / "io4" / "top4.nim", "import std/strutils\ninclude early\ninclude late\n")
+    check nxIncludeOrder(nxLoad(dir / "io4" / "early.nim"), lines(dir / "io4" / "early.nim"), 0, 5).len == 0
+  test "… nor a name something it sees declares too (system's, its own)":
+    createDir(dir / "io5")
+    writeFile(dir / "io5" / "early.nim", "proc toUpperAscii(c: char): char = c\nproc a(s: string): int = s.len + len(s)\n" &
+              "echo toUpperAscii('a')\n")
+    writeFile(dir / "io5" / "late.nim", "import std/strutils\n")
+    writeFile(dir / "io5" / "top5.nim", "include early\ninclude late\n")
+    check nxIncludeOrder(nxLoad(dir / "io5" / "early.nim"), lines(dir / "io5" / "early.nim"), 0, 5).len == 0
+  test "… and ned's own program has none (nedls includes ned.nim, then its own files)":
+    let src = currentSourcePath().parentDir.parentDir.parentDir / "src"
+    var n = 0
+    for p in walkDirRec(src / "ned"):
+      if not p.endsWith(".nim") or "/plugins/lib/" in p: continue
+      let got = nxIncludeOrder(nxLoad(p), lines(p), 0, 100_000)
+      for g in got: echo "  ", p, ":", g
+      n += got.len
+    check n == 0
+
 removeDir(dir)

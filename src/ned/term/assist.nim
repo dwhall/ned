@@ -1,11 +1,13 @@
 # ── help at the shell's prompt (6.52), for a shell that marks its commands (OSC 133): suggestions as you type, above
-#    the line — your earlier commands, programs, files and folders, git branches, nimble tasks — taken with a tap or
+#    the line — your earlier commands, programs, files and folders, git branches, nimble tasks, nim's commands and the
+#    options nim, nimble and ned say they have (6.53) — taken with a tap or
 #    Ctrl+Space; a click on the command line moves the shell's cursor there; and the command whose output fills the
 #    terminal stays on its top row ──
 
 type TermSug = object
   text: string              # what the word typed becomes (the whole line, for an earlier command)
-  kind: string              # what it is: "earlier", "program", "folder", "file", "branch", "task", "git", "nimble"
+  kind: string              # what it is: "earlier", "program", "folder", "file", "branch", "task", "git", "nimble",
+                            # "nim", "option"
   whole: bool               # it is a whole command line (an earlier one), not the word being typed
 
 var
@@ -19,6 +21,9 @@ var
   termProgsAt: MonoTime
   termHist: seq[string]     # the shell's own history, newest first
   termHistKey = ""          # (its file and when it changed)
+  termOpts: Table[string, seq[string]]   # a program's options, from its own --help (6.53: nim, nimble, ned …)
+  termOptsAsked: HashSet[string]         # (the programs asked already: once a session)
+  termOptsGen = 0                        # (a list came: the suggestions are worked out again)
 
 const
   TermGitCmds = ["add", "bisect", "blame", "branch", "checkout", "cherry-pick", "clean", "clone", "commit", "diff",
@@ -29,6 +34,9 @@ const
   TermNimbleCmds = ["build", "run", "test", "install", "uninstall", "develop", "check", "init", "publish", "search",
                     "list", "tasks", "refresh", "dump", "lock", "path", "c", "cpp", "js", "doc"]
   TermBuiltins = ["cd", "export", "source", "alias", "unset", "exit", "history", "pushd", "popd", "jobs", "fg", "bg"]
+  TermNimCmds = ["c", "cpp", "objc", "js", "r", "e", "check", "doc", "jsondoc", "dump", "genDepend", "ctags",
+                 "buildIndex", "md2html", "rst2html", "md2tex", "rst2tex", "compile", "nif"]
+  TermOptProgs = ["nim", "nimble", "ned", "nedfmt", "nedls", "atlas", "nimsuggest", "testament", "nph", "nimony"]
 
 proc termTyped(t: Term): (bool, string) =
   ## the command line typed so far, up to the cursor — (false, "") unless the terminal is at a marked prompt, live,
@@ -164,6 +172,42 @@ proc termNimbleTasks(dir: string): seq[string] =
           if n.len > 0 and n notin result: result.add n
   except CatchableError: discard
 
+proc termOptsParse(help: string): seq[string] =
+  ## the options in a program's --help: each line's first column that starts with -, "-d, --define:SYMBOL" as both,
+  ## a value of a few choices ("--opt:none|speed|size") as each choice, any other value as the option and its colon
+  for l in help.splitLines:
+    let t = l.strip(trailing = false)
+    if not t.startsWith("-") or l.len == t.len: continue        # (an option's line is indented)
+    var col = t
+    let gap = t.find("  ")
+    if gap > 0: col = t[0 ..< gap]
+    for part in col.split(", "):
+      var o = part.strip.split(' ')[0]
+      if not o.startsWith("-") or o.len < 2 or o == "--": continue
+      let c = o.find({':', '='})
+      if c > 0:
+        let v = o[c + 1 .. ^1]
+        if '|' in v and v.allCharsInSet(IdentChars + {'|'}):
+          for x in v.split('|'):
+            if x.len > 0 and o[0 .. c] & x notin result: result.add o[0 .. c] & x
+          continue
+        o = o[0 .. c]
+      o = o.strip(leading = false, chars = {',', '.', ']', ')'})
+      let br = o.find({'[', '('})
+      if br > 0: o = o[0 ..< br]
+      if o.len >= 2 and o notin result: result.add o
+
+proc termOptsOf(prog: string): seq[string] =
+  ## a program's options (nim's from --fullhelp), read from it once in the background: none the first time
+  if prog in termOpts: return termOpts[prog]
+  if prog in termOptsAsked or findExe(prog).len == 0: return
+  termOptsAsked.incl prog
+  let flag = if prog == "nim": "--fullhelp" else: "--help"
+  discard startJob(jkAux, quoteShell(prog) & " " & flag & " 2>&1", getHomeDir(), proc(j: Job) =
+    termOpts[prog] = termOptsParse(j.output)
+    inc termOptsGen
+    needRender = true)
+
 proc termSuggestFor(t: Term, line: string): seq[TermSug] =
   ## what to suggest for a command line typed so far: earlier commands it begins, then for the word being typed the
   ## programs (the first word), git's commands and branches, nimble's commands and tasks, the files and folders
@@ -206,6 +250,13 @@ proc termSuggestFor(t: Term, line: string): seq[TermSug] =
           if res.len >= 8: break
     if '/' notin word: return res
   let cmd = if words.len > 0: words[0] else: ""
+  let prog = extractFilename(cmd)
+  if word.startsWith("-") and prog in TermOptProgs:      # (6.53: the options it says it has)
+    for o in termOptsOf(prog): add(o, "option")
+    return res
+  if prog == "nim" and argn == 1:
+    for c in TermNimCmds: add(c, "nim")
+    return res
   if cmd == "git" and argn == 1:
     for g in TermGitCmds: add(g, "git")
     return res
@@ -256,7 +307,8 @@ proc termSugIcon(kind: string): string =
   of "folder": "▸"
   of "file": "·"
   of "branch": "⎇"
-  of "task", "nimble", "git": "⚑"
+  of "task", "nimble", "git", "nim": "⚑"
+  of "option": "−"
   else: "›"
 
 proc termHelpDraw(ti: int, x0, y0, w, h, gut: int) =
@@ -290,7 +342,7 @@ proc termHelpDraw(ti: int, x0, y0, w, h, gut: int) =
     if line != termSugHidden: termSugHidden = ""
     return
   termSugHidden = ""
-  let key = $cast[int](t) & "|" & line & "|" & t.cwd
+  let key = $cast[int](t) & "|" & line & "|" & t.cwd & "|" & $termOptsGen
   if key != termSugKey:
     termSugKey = key
     termSugs = t.termSuggestFor(line)

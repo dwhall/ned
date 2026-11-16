@@ -307,3 +307,11 @@ proc copilotReady(s: LspServer)                                      # ai/copilo
 proc copilotStatus(p: JsonNode)                                      # ai/copilot.nim
 proc copilotAsk(b: Buffer)                                           # ai/copilot.nim
 proc copilotTaken()                                                  # ai/copilot.nim
+proc ideEnv(): seq[(string, string)]                                 # ai/idelink.nim
+proc ideDiffKey(bufId: int, k: Key): bool                            # ai/idelink.nim
+proc ideDiffForget(bufId: int)                                       # ai/idelink.nim
+proc cmdIdeMention()                                                 # ai/idelink.nim
+proc cmdIdeStatus()                                                  # ai/idelink.nim
+proc wtTurnEnded()                                                   # ai/worktree.nim
+proc cmdWorktreeChat()                                               # ai/worktree.nim
+proc cmdWorktreeReview()                                             # ai/worktree.nim

@@ -178,6 +178,7 @@ proc mainLoop() =
     for fd in termFds(): fds.add TPollfd(fd: fd, events: POLLIN)
     gitWatchFds(fds)
     wkFds(fds)
+    ideFds(fds)
     if dbgOn and dbgProc.outFd >= 0: fds.add TPollfd(fd: dbgProc.outFd, events: POLLIN)
     if dbgOn and dbgDap and dapSock >= 0: fds.add TPollfd(fd: dapSock, events: POLLIN)
     if dbgOn and dbgDap and dapParentSock >= 0: fds.add TPollfd(fd: dapParentSock, events: POLLIN)
@@ -219,6 +220,7 @@ proc mainLoop() =
     if astOn or docPvSrc >= 0: timeout = min(timeout, 500)
     if lfBusy(): timeout = min(timeout, 30)            # (the viewer's index, a search: on while it lasts)   # (the AST view, the docs preview: after a pause)
     if workDeferred: timeout = min(timeout, 5)
+    if ideConns.len > 0: timeout = min(timeout, ideDueMs())   # (Claude Code, Gemini CLI: the selection after a pause)
     if repOn: timeout = min(timeout, repDueMs())     # (ned --replay: the recording's next key)
     if frameHeld: timeout = min(timeout, max(1, (if slowTerminal(): 33 else: 16) - int(msSince(frameAt))))
     if cfgWebEngine != "off" and cb0.path.len > 0 and cb0.lang != nil and
@@ -323,6 +325,7 @@ proc mainLoop() =
       if reapPids.len > 0: timedWork("ended programs"): reapPending()
       if mcpServers.len > 0: timedWork("MCP servers"): mcpPump(ready)
       if acp != nil: timedWork("the AI agent (ACP)"): acpPump(ready)
+      if ideFd >= 0: timedWork("Claude Code and Gemini CLI (the IDE link)"): ideLinkPump(ready)
       timedWork("plugins"): plugPump(ready)
       timedWork("notebook"): nbPump(ready)
       timedWork("Nim tour"): tourPump()
@@ -608,6 +611,8 @@ proc usage() =
   echo "  --sandbox [options] [--] CMD…  run CMD (and what it starts) so that it changes files only in this folder,"
   echo "                        reads only it and the system's, and has no network (Linux: Landlock) — the way"
   echo "                        plugins run: ned --sandbox --help"
+  echo "  --sandbox-agent [--] CMD…  an AI agent's program (claude, codex, gemini …) in the sandbox for agents:"
+  echo "                        the network, the project and its own folder only — ned --sandbox-agent --help"
   echo "  --completions SHELL   print the Tab completion of ned's and nedfmt's options for bash, zsh, fish,"
   echo "                        pwsh (PowerShell) or nu (nushell):"
   echo "                        ned --completions fish > ~/.config/fish/completions/ned.fish"
@@ -920,6 +925,7 @@ proc main() =
       of "--engine-worker": workerMain()          # (the editor's engine worker: nim/worker.nim)
       of "--update": quit updateMain(cl[ai .. ^1])
       of "--sandbox": quit sandboxMain(cl[ai .. ^1])     # (sys/landlock.nim: a command limited by Landlock)
+      of "--sandbox-agent": quit agentSandboxMain(cl[ai .. ^1])   # (ai/acp.nim: an agent's program in its sandbox)
       of "--c-lines": quit cLinesMain(cl[ai .. ^1])      # (debug/clines.nim: a step of the debugger's build)
       of "--term-host":                           # (a kept terminal's shell: term/termhost.nim)
         when not defined(windows): termHostMain(cl[ai .. ^1])
@@ -1129,6 +1135,7 @@ proc main() =
   if rootDir != "/" and rootDir.len > 1: startScan()
   smark("file list started")
   ctlListen()                          # (`ned FILE` in its terminal, git's editor, scripts: see control)
+  if dirExists(ideClaudeDir()) or dirExists(getHomeDir() / ".gemini"): ideStart()   # (ai.ideLink)
   let crashed = crashNoted()           # (a crash last time: its note, said below once the screen is up)
   crashGuard()                         # (a crash from now on gives the terminal back and leaves a note)
   enterRaw()
@@ -1184,6 +1191,7 @@ proc main() =
   finally:
     leaveRaw()
     ctlClose()
+    ideStop()
     cleanProjectTemps()
   if resetPending.len == 0:
     saveState()                      # (Reset everything: no state written back)

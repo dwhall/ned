@@ -93,8 +93,12 @@ With the shell marking its commands, ned helps with the line you type:
 
 - **Suggestions** above the line, as you type: commands you ran before (this terminal's, then your shell's
   history — bash, zsh, fish), programs for the first word, files and folders (a word with a `/`, or after `cd`), git
-  branches after `git checkout`, `switch`, `merge`, `rebase` …, git's own commands after `git`, and after `nimble`
-  the project's tasks and nimble's commands. Tap one to take it, or press **Ctrl+Space**, then ↑/↓ and Enter (or Tab);
+  branches after `git checkout`, `switch`, `merge`, `rebase` …, git's own commands after `git`, after `nimble`
+  the project's tasks and nimble's commands, and after `nim` its commands (`c`, `r`, `js`, `check`, `doc` …). A word
+  that starts with `-` after nim, nimble, ned, nedfmt, nedls, atlas, testament, nph or nimsuggest is one of the
+  options the program's own help lists (nim's `--fullhelp`), read once in the background the first time; a value of
+  a few choices comes as each (`--opt:speed`, `--mm:orc`), any other as the option and its colon (`--define:`).
+  Tap one to take it, or press **Ctrl+Space**, then ↑/↓ and Enter (or Tab);
   Esc hides them for that line. Every other key goes to the shell as before, so your shell's own Tab completion and
   history keys still work. Not while fish shows its own suggestion, nor in a shell on another machine (only its
   earlier commands there). `"terminal.suggest": false` turns them off.

@@ -22,7 +22,7 @@ proc newTerm(w, h: int, cwd: string, cmd = "", keep = false): Term =
   when defined(windows):
     # a pseudo-console (ConPTY): the shell, or `cmd` through sh (Git for Windows') or cmd.exe
     let (siArgs, siEnv) = if cmd.len == 0: shellIntegration(shell) else: (@[], @[])
-    let env = @[("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", "ned")] & siEnv
+    let env = @[("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", "ned")] & siEnv & ideEnv()
     let argv = if cmd.len > 0: @["sh", "-c", cmd] else: @[shell] & siArgs
     let r = winPtySpawn(argv, cwd, t.w, t.h, env)
     if r.fd < 0:
@@ -36,7 +36,7 @@ proc newTerm(w, h: int, cwd: string, cmd = "", keep = false): Term =
     let (siArgs, siEnv) = if cmd.len == 0: shellIntegration(shell) else: (@[], @[])
     # terminal.editorEnv: this ned is git's editor here (and EDITOR, VISUAL where they are not set) — `git commit`
     # opens its message in a tab and waits for it (see control)
-    var edEnv: seq[(string, string)]
+    var edEnv = ideEnv()                   # (ai.ideLink: claude and gemini started here find this ned)
     if cfgEditorEnv and getEnv("NED_SOCKET").len > 0:
       let me = quoteShell(getAppFilename()) & " --wait"
       if getEnv("GIT_EDITOR").len == 0: edEnv.add ("GIT_EDITOR", me)

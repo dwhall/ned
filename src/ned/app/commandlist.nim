@@ -792,6 +792,12 @@ proc initCommands() =
   add("Copilot: sign in…", "GitHub Copilot's suggestions (ai.copilot): a code to type on GitHub's page",
       cmdCopilotSignIn())
   add("Copilot: sign out", "", cmdCopilotSignOut())
+  add("AI: send to Claude Code", "the file and the lines selected, as an @-mention in Claude Code's prompt", cmdIdeMention())
+  add("AI: IDE link (Claude Code, Gemini CLI)", "where they find ned, and who is connected (ai.ideLink)", cmdIdeStatus())
+  add("AI: agent in a worktree", "a new conversation with the agent on a branch of its own: your files are not touched",
+      cmdWorktreeChat())
+  add("AI: review the agent's branch", "each file the agent changed in its worktree, to take or leave; merge; remove",
+      cmdWorktreeReview())
   add("Copilot: next edit", "what Copilot would change next in this file", copilotNextEdit(buf(), quiet = false))
   add("AI: ask about selection", "", (block:
     showSide(svAssistant)

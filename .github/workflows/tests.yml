@@ -125,6 +125,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y tmux clangd gdb lldb zsh fish ksh mksh yash elvish hunspell-en-us openssh-server
           npm install -g vscode-langservers-extracted
+          # GitHub Copilot's own language server, for t_653_copilot_real (signed out: what ned does then)
+          npm install -g @github/copilot-language-server || echo "copilot-language-server did not install: its test is skipped"
           # sql-language-server: what npm gives it today does not start (vscode-languageserver-protocol 3.18 no longer
           # has the file it loads) — installed in a folder of its own, with that library held at 3.17
           mkdir -p ~/sqlls && cd ~/sqlls &&

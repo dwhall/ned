@@ -63,6 +63,7 @@ python3 tests/lsp/tnedls.py ./nedls                   # nedls: every feature, th
 python3 tests/editors/check.py ./nedls                # the set-ups for Neovim, Helix and Zed
 python3 tests/tour/check.py                           # the Nim tour's lessons: every cell, every exercise
 python3 tests/plugins/tsandbox.py ./ned && python3 tests/ai/tredact.py ./ned && python3 tests/update/tupdate.py ./ned
+python3 tests/ai/tagents.py ./ned                     # the real agents in the agents' sandbox (npx; no prompt sent)
 python3 tests/smoke/commands.py ./ned && python3 tests/smoke/commands.py ./ned --plugins   # every command, every plugin
 python3 tests/smoke/commands.py ./ned --menus        # every item of every menu, picked with the keys
 python3 tests/hostile/thostile.py ./ned ./nedls      # plugins, the remote control, nedls and the screen fed nonsense

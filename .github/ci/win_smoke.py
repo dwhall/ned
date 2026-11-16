@@ -103,7 +103,13 @@ def shell_check(shell, line, want):
         json.dump({"security.folderTrust": "off", "nim.nimsuggest": False, "terminal.shell": shell,
                    "terminal.keepRunning": False}, f)
     q = PtyProcess.spawn([ned, src], dimensions=(32, 120), env=env, cwd=tmp)
-    scr = pyte.Screen(120, 32)
+    class QuietScreen(pyte.Screen):
+        """pyte's screen, taking ned's questions to the terminal (\\e[?996n…) without an exception"""
+
+        def report_device_status(self, *args, **kwargs):
+            """(nothing is answered: ned works without the answers)"""
+
+    scr = QuietScreen(120, 32)
     st = pyte.Stream(scr)
     got = []
     stop = threading.Event()

@@ -14,7 +14,10 @@ outline and symbol search immediately, with no compiler run and no server proces
 `export`, `include`, `from … import`, `except` and `import … as` are followed. A file that another one
 `include`s sees what its includer sees: the includer's imports, its declarations and its other include files
 (the includer is looked for in the file's folder and the three above). What an include file imports, and what it
-exports, is the whole module's — as nedls.nim includes ned.nim first, and its own files use ned.nim's imports. `when` branches are evaluated for your
+exports, is the whole module's — as nedls.nim includes ned.nim first, and its own files use ned.nim's imports. The
+compiler reads the files in the order they are included, though: a name used in a file that only an import in a
+file included after it brings is undeclared there, and ned says so as you type (rule `include-order`: import it in
+that file, or include the other one first). `when` branches are evaluated for your
 platform and for what your project's config defines (`nim dump` lists it, so a symbol it leaves out is false).
 What `nim dump` said is kept (`~/.cache/ned/dump`) with the times of the files it read — the config files, the
 `.nimble`, its lock, the package folders, `nim` itself — so the next session has it from the first screen; it is

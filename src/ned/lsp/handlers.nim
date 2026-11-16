@@ -111,7 +111,9 @@ proc lspHandle(s: LspServer, m: JsonNode) =
       let items = m{"params", "items"}
       if items != nil:
         for it in jitems(items):
-          let sec = sectionFor(it{"section"}.getStr)
+          var sec = sectionFor(it{"section"}.getStr)
+          # (Copilot asks for its telemetry setting: off — ned sends nothing about you anywhere)
+          if s.langId == "copilot" and it{"section"}.getStr == "telemetry": sec = %*{"telemetryLevel": "off"}
           # (a server on a remote folder's server finds its own nimsuggest: the one here is not there)
           if s.remoteMap.len > 0 and sec.kind == JObject and sec.hasKey("nimsuggestPath"): sec.delete("nimsuggestPath")
           arr.add sec

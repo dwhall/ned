@@ -24,7 +24,7 @@ Made by **Sultan Al Isaiee** ([@foxoman](https://github.com/foxoman)) — [www.f
 
 ## Contents
 
-- [What's new in 6.52.1](#whats-new-in-6521) · [6.52](#whats-new-in-652) · [6.51](CHANGELOG.md#whats-new-in-651) · [6.50](CHANGELOG.md#whats-new-in-650) · [6.49](CHANGELOG.md#whats-new-in-649) · [6.48](CHANGELOG.md#whats-new-in-648) · [6.47.1](CHANGELOG.md#whats-new-in-6471) · [6.47](CHANGELOG.md#whats-new-in-647) · [6.46](CHANGELOG.md#whats-new-in-646) · [6.45](CHANGELOG.md#whats-new-in-645) · [6.44](CHANGELOG.md#whats-new-in-644) · [6.43.1](CHANGELOG.md#whats-new-in-6431) · [6.43](CHANGELOG.md#whats-new-in-643) · [6.42.1](CHANGELOG.md#whats-new-in-6421) · [6.42](CHANGELOG.md#whats-new-in-642) · [6.41.1](CHANGELOG.md#whats-new-in-6411) · [6.41](CHANGELOG.md#whats-new-in-641) · [6.40](CHANGELOG.md#whats-new-in-640) · [6.39](CHANGELOG.md#whats-new-in-639) · [6.38](CHANGELOG.md#whats-new-in-638) · [6.37](CHANGELOG.md#whats-new-in-637) · [6.36](CHANGELOG.md#whats-new-in-636) · [6.35](CHANGELOG.md#whats-new-in-635) · [6.34](CHANGELOG.md#whats-new-in-634) · [6.33](CHANGELOG.md#whats-new-in-633) · [6.32](CHANGELOG.md#whats-new-in-632) · [older releases](CHANGELOG.md)
+- [What's new in 6.53](#whats-new-in-653) · [6.52.1](CHANGELOG.md#whats-new-in-6521) · [6.52](CHANGELOG.md#whats-new-in-652) · [6.51](CHANGELOG.md#whats-new-in-651) · [6.50](CHANGELOG.md#whats-new-in-650) · [6.49](CHANGELOG.md#whats-new-in-649) · [6.48](CHANGELOG.md#whats-new-in-648) · [6.47.1](CHANGELOG.md#whats-new-in-6471) · [6.47](CHANGELOG.md#whats-new-in-647) · [6.46](CHANGELOG.md#whats-new-in-646) · [6.45](CHANGELOG.md#whats-new-in-645) · [6.44](CHANGELOG.md#whats-new-in-644) · [6.43.1](CHANGELOG.md#whats-new-in-6431) · [6.43](CHANGELOG.md#whats-new-in-643) · [6.42.1](CHANGELOG.md#whats-new-in-6421) · [6.42](CHANGELOG.md#whats-new-in-642) · [6.41.1](CHANGELOG.md#whats-new-in-6411) · [6.41](CHANGELOG.md#whats-new-in-641) · [6.40](CHANGELOG.md#whats-new-in-640) · [6.39](CHANGELOG.md#whats-new-in-639) · [6.38](CHANGELOG.md#whats-new-in-638) · [6.37](CHANGELOG.md#whats-new-in-637) · [6.36](CHANGELOG.md#whats-new-in-636) · [6.35](CHANGELOG.md#whats-new-in-635) · [6.34](CHANGELOG.md#whats-new-in-634) · [6.33](CHANGELOG.md#whats-new-in-633) · [6.32](CHANGELOG.md#whats-new-in-632) · [older releases](CHANGELOG.md)
 - [Features](#features)
 - [Installing](#installing)
 - [First steps](#first-steps)
@@ -33,54 +33,38 @@ Made by **Sultan Al Isaiee** ([@foxoman](https://github.com/foxoman)) — [www.f
 
 ---
 
-## What's new in 6.52.1
+## What's new in 6.53
 
-**The engine sees what a program's include files import.** In a program put together with `include` — nedls is one:
-it includes ned.nim, then its own files — the files after the first had no types, hints or completions from the
-standard library, because the engine took a module's imports only from the module itself. Now a module sees what
-each of its include files imports, and an include file's `export` counts for the module. The engine also knows the
-type of `%x` (json's, not the number's) and the lets inside a routine whose body is a `(proc() = …)` over the lines
-below. Graded against the compiler on ned's own source, its types now agree everywhere they are graded — 5,793 lets
-and vars in `nedfmt`, the engine and nedls — and Go to definition on 99.9% or more; GitHub's check now asks for
-99.5% of both ([Nim IDE](docs/guide/nim.md)).
+**Claude Code and Gemini CLI use ned as their IDE.** Run `claude` or `gemini` in ned's terminal and they know ned
+is there: they see the file and the lines you are on, open files in ned, read the problems ned shows, and each
+change they propose opens as a diff in ned — a accepts it, d rejects it. *AI: send to Claude Code* puts the file and
+the lines you selected in its prompt. Started in another terminal in the project, Claude Code finds ned with `/ide`;
+in Gemini CLI, `/ide enable`. The link is a server on 127.0.0.1 only, each request carries a token only you can
+read, and a request from a web page is turned away (`ai.ideLink`, [The AI assistant](docs/guide/ai.md#claude-code-and-gemini-cli)).
 
-## What's new in 6.52
+**An agent in a worktree of its own.** *AI: agent in a worktree* starts a conversation with your agent (Claude
+Agent, Codex, Gemini CLI, Copilot) on a branch of its own, from your last commit: it works there while you go on
+editing, and your files are not touched — a write outside its worktree is refused. When it is done, *AI: review the
+agent's branch* lists each file it changed. Open one to see its version beside yours: a takes it into your file
+(*AI: undo* gives yours back), d leaves it. Or merge the whole branch, or remove the worktree and the branch
+([The AI assistant](docs/guide/ai.md#an-agent-in-a-worktree)).
 
-**Help at the prompt.** As you type in the terminal, ned suggests above the line what fits: commands you ran
-before, programs, files and folders, git branches, the project's nimble tasks. Tap one, or press Ctrl+Space and pick
-it with ↑/↓ and Enter; the shell gets the keys as before (`terminal.suggest`). A tap on the command line you are
-typing moves the shell's cursor there, so a typo is fixed without the arrow keys (`terminal.clickToMove`). While a
-command's output fills the terminal, or you scroll through it, the command stays on the top row; a tap there goes
-to its start (`terminal.stickyCommand`). PowerShell and nushell are now tested on every change, as the other shells
-are, and `ned --completions pwsh|nu` prints their Tab completion of ned's options. A program in ned's terminal that
-asks which terminal it is is told: ned ([The terminal](docs/guide/terminal.md)).
+**Agents in the sandbox, from the terminal too.** `ned --sandbox-agent -- claude` runs an agent's own program in
+the sandbox the AI dock's agents use (`ai.agentSandbox`, Linux): with the network, changing files only in the
+project, its own folder in your home (made when it is missing), the caches, npm's cache wherever npm keeps it, and
+the certificates its variables name. Claude Agent, Codex, Gemini CLI and Copilot all start in it
+([Safety](docs/guide/safety.md)).
 
-**GitHub Copilot as you type.** With `ai.copilot` on, Copilot writes the grey suggestions (Tab takes them) through
-its language server, and after one is taken it says what else in the file should change too — *Show* to see the
-change and apply it, or *Copilot: next edit* at any time. *Copilot: sign in…* shows a code (copied) and opens
-GitHub's page to type it in. It needs Node.js 20.8 or newer (Termux: `pkg install nodejs`) and a Copilot plan on
-your GitHub account ([The AI assistant](docs/guide/ai.md#github-copilot)).
+**Copilot, signed out.** When Copilot's server says you are not signed in, a toast says so once with *Sign in*,
+and no suggestion is asked for until you are. Its telemetry events now come to ned, which drops them.
 
-**MCP servers that ask you to sign in.** A server on the web such as Linear's, Notion's or GitHub's signs you in in
-the browser: *MCP: sign in to a server…*, or `ned --mcp-login URL`. ned keeps the token where only you may read it
-and gets a new one when it runs out. The agents in ned's AI dock (Claude Agent, Codex, Copilot …) now get the
-servers on the web too, and can run inside ned's sandbox themselves (`ai.agentSandbox`): with the network, but
-changing files only in the project, the caches and their own folders ([The AI assistant](docs/guide/ai.md)).
+**The terminal knows nim's options.** As you type `nim c --o`, the terminal suggests `--opt:speed`, `--opt:size`
+and the rest; a value of a few choices comes as each choice (`--mm:orc`). nim's commands come first, and nimble,
+ned, nedfmt, nedls, atlas and testament are suggested what their own `--help` says ([The terminal](docs/guide/terminal.md)).
 
-**Safer where there is no sandbox.** Android, macOS and Windows have no Landlock, so the assistant's commands
-cannot be kept in the sandbox there. With `ai.autoApprove` at `all` ned still asks before each command on those
-systems, and says why; `ai.sandbox` off runs them without asking, as before. From this release `ned --update` and
-install.sh install only a release signed with ned's release key ([Safety](docs/guide/safety.md)).
-
-**Compare two folders.** *File: compare two folders…* lists the files that differ — changed, only in one, only in
-the other — and each changed one opens as a diff; the next time, the same two are listed at once
-([Files, folders and projects](docs/guide/projects.md#tabs-and-panes)).
-
-**Nim and the rest.** The compiler's facts about a file are read in the engine worker after every save, whatever
-the file's size, so the keys never wait for them on a tablet. The engine gives the type of an `if` over several
-lines whose branches each have their value on their own line, and its grades against the compiler count an alias
-(`Hash`, `BiggestInt`) as the type it names. ty and pyrefly (Python), TypeScript's native server (tsgo) and Typst
-with tinymist are in ned's list of language servers.
+**Include order.** In a program put together with `include`, a name used in a file that only an import in a file
+included after it brings is now an error as you type — the compiler reads the files in order and would not see
+it there (`include-order`, [Nim IDE](docs/guide/nim.md)).
 
 ## Features
 
@@ -251,7 +235,7 @@ ned
 ```
 
 or, from the project folder: `nimble termux` (ned, with `nedfmt` and `nedls` beside it) — or a ready-made package,
-`pkg install ./ned_6.52.1_aarch64.deb` (ned, nedls, nedfmt; the example plugins in `$PREFIX/share/ned/plugins`):
+`pkg install ./ned_6.53.0_aarch64.deb` (ned, nedls, nedfmt; the example plugins in `$PREFIX/share/ned/plugins`):
 `nimble termuxdeb` makes it on a Linux machine (with zig).
 
 The Nim IDE features need nothing more: the engine is built in, and `nim check` does the rest.

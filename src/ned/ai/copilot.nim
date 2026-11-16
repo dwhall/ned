@@ -6,6 +6,7 @@ var
   copilotSrv: LspServer               # the running server (nil: not started)
   copilotState = ""                   # what it last said about itself (didChangeStatus: its kind and message)
   copilotSaid = ""                    # (the state last told the person: each new one once)
+  copilotOut = false                  # it said it is not signed in: no suggestion is asked until it says it is
   copilotWant = ""                    # what to do once it is ready: "signin"
   copilotDocs: Table[int, int]        # buffer id → the version of its text Copilot has
 
@@ -38,16 +39,21 @@ proc copilotReady(s: LspServer) =
     copilotWant = ""
     runCmd("Copilot: sign in…")
 
+proc cmdCopilotSignIn()
+
 proc copilotStatus(p: JsonNode) =
   ## didChangeStatus: whether it works — signed in (Normal), not (Error: told once, with how to sign in), a passing
   ## problem (Warning), a file it leaves alone (Inactive)
   let kind = p{"kind"}.getStr
   let msg = p{"message"}.getStr.strip
   copilotState = kind & (if msg.len > 0: ": " & msg else: "")
+  if not p{"busy"}.getBool: copilotOut = kind == "Error"
   if copilotState == copilotSaid or p{"busy"}.getBool: return
   copilotSaid = copilotState
   case kind
-  of "Error": warn("Copilot: " & (if msg.len > 0: msg else: "not signed in") & " — Copilot: sign in…")
+  of "Error":
+    toast("Copilot: " & (if msg.len > 0: msg else: "not signed in"), 2, "Sign in", proc() = cmdCopilotSignIn(),
+          ttl = 20_000)
   of "Warning":
     if msg.len > 0: info("Copilot: " & msg)
   else: discard
@@ -97,7 +103,7 @@ proc copilotAsk(b: Buffer) =
   ## asks Copilot for the suggestion at the cursor (textDocument/inlineCompletion): its first that only adds text
   ## there is shown as the grey text, and Copilot is told it was shown
   let s = copilotUsable(b)
-  if s == nil: return
+  if s == nil or copilotOut: return                 # (not signed in: Copilot: sign in… first — said once)
   s.copilotSync(b)
   let at = b.primary.head
   let (id, ch) = (b.id, b.changeId)
@@ -108,6 +114,7 @@ proc copilotAsk(b: Buffer) =
                   "formattingOptions": {"tabSize": b.lang.indentWidth, "insertSpaces": not b.lang.useTabs}}
   s.lspCall("textDocument/inlineCompletion", params, proc(res: JsonNode, err: string) =
     let bb = bufById(id)
+    if err.len > 0 and "NotSignedIn" in err: copilotOut = true
     if err.len > 0 or res == nil or bb == nil or bb.changeId != ch or bb.primary.head != at: return
     let items = if res.kind == JArray: res else: res{"items"}
     if items == nil or items.kind != JArray: return
@@ -215,6 +222,7 @@ proc cmdCopilotSignIn() =
     if res == nil or res.kind != JObject: return
     let user = res{"user"}.getStr
     if res{"status"}.getStr in ["AlreadySignedIn", "OK"]:
+      copilotOut = false
       info("Copilot: signed in" & (if user.len > 0: " as " & user else: ""))
       return
     let code = res{"userCode"}.getStr
@@ -229,6 +237,7 @@ proc cmdCopilotSignIn() =
                 proc(r: JsonNode, e: string) =
         if e.len > 0: error("Copilot: " & e)
         elif r != nil and r.kind == JObject and r{"user"}.getStr.len > 0:
+          copilotOut = false
           info("Copilot: signed in as " & r{"user"}.getStr))
     elif page.len > 0: openInBrowser(page))
 

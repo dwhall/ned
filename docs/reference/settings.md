@@ -361,6 +361,7 @@ Every setting ned has, its default and what it does — made by `ned --doc-setti
 | `ai.trimOldResults` | `true` | Long tool outputs (a file read, a command's output) of earlier questions are sent cut to their start and end — those of the question being answered in full: fewer tokens each step, answers sooner. The assistant can run the tool again |
 | `ai.inlineCompletion` | `false` | Grey inline suggestions while you type (Tab accepts) — sends code on every pause |
 | `ai.inlineCompletionDelay` | `700` | Pause in ms before an inline suggestion is requested |
+| `ai.ideLink` | `true` | Claude Code and Gemini CLI use ned as their IDE: started in ned's terminal they see the file and the selection you are on, and show the changes they propose here as diffs to accept (a) or reject (d). A server on 127.0.0.1 only, and only for them: each request carries a token only you can read |
 | `ai.copilot` | `false` | GitHub Copilot writes the grey suggestions as you type (Tab takes them) and the next edits, instead of the model — through its language server, which needs Node.js 20.8 or newer; run Copilot: sign in… once (a Copilot plan on your GitHub account) |
 | `ai.copilotCommand` | `[]` | How Copilot's language server starts (empty: copilot-language-server --stdio when it is installed, else npx -y @github/copilot-language-server --stdio) |
 | `ai.copilotNextEdits` | `true` | After a Copilot suggestion is taken, ask Copilot whether something further on should change too (a note with Show; Copilot: next edit asks at any time) |

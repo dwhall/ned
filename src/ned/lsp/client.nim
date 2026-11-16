@@ -284,8 +284,10 @@ proc lspSpawn(id: string, c: seq[string], secondary: bool, ri = -1): LspServer =
         "window": {"workDoneProgress": true}}}
     if id == "copilot":
       # (GitHub Copilot's language server: ai/copilot)
+      # (its telemetry events come to ned — uedTelemetry notifications, which ned drops — instead of going to GitHub)
       params["initializationOptions"] = %*{"editorInfo": {"name": AppName, "version": Version},
-                                            "editorPluginInfo": {"name": AppName, "version": Version}}
+                                            "editorPluginInfo": {"name": AppName, "version": Version},
+                                            "copilotCapabilities": {"redirectedTelemetry": true}}
       params["capabilities"]["window"]["showDocument"] = %*{"support": true}
       s.name = "Copilot"
     elif secondary: discard

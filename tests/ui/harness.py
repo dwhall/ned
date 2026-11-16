@@ -199,6 +199,7 @@ def setup(cfg=None):
     c["ui.cursorAnimation"] = "off"    # (screens read while the cursor glides would show its trail; t_629_cursor_glide)
     c["terminal.suggest"] = False      # (no list over the terminal's lines as a test types; t_652_terminal_help)
     c["terminal.clickToMove"] = False  # (a click focuses the terminal, as the tests were written; … and here)
+    c["ai.ideLink"] = False            # (no lock files in your ~/.claude; t_653_ide_claude turns it on)
     c.update(cfg or {})
     c = {k: v for k, v in c.items() if v is not None}
     json.dump(c, open(CFG + '/ned/config.json', 'w'))

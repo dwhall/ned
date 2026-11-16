@@ -1,8 +1,10 @@
 # the diff tab's keys, the commands that compare a file with its last commit or with another file, two folders (6.52),
 # and the command that opens a Markdown preview
 proc diffKey(k: Key): bool =
-  ## keys in a diff tab: F7 / Shift+F7 between changes, Enter opens the line, r reverts; typing is ignored
+  ## keys in a diff tab: F7 / Shift+F7 between changes, Enter opens the line, r reverts, a / d accept or reject a
+  ## tool's proposed change; typing is ignored
   let b = buf()
+  if ideDiffKey(b.id, k): return true                # (a change Claude Code or Gemini CLI proposed: a, d)
   let v = diffViews[b.id]
   v.diffRows()
   let ri = b.primary.head.line

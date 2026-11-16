@@ -370,12 +370,18 @@ build with AddressSanitizer — see [The fuzzer](#the-fuzzer) —; every reader 
 (`tests/fuzz/parsers.nim`) for 150 seconds each under AddressSanitizer and UBSan, with a new seed each week (the
 date), the inputs that crash one uploaded; and nimony built from its main branch, with ned's Nim 3 tests
 (`t_612_nim3`, `t_627_nim3_contracts`, `t_628_hastur_tests`, `t_637_nim3_typing`) run against it: what changed in
-Nim 3 that ned must follow shows there first.
+Nim 3 that ned must follow shows there first. And (6.53) the real agents ned offers — Claude Agent, Codex, Gemini
+CLI, Copilot, as npm has them that week — each started in ned's sandbox for agents (`ned --sandbox-agent`) in an
+empty home, asked only initialize and session/new: never a prompt (`tests/ai/tagents.py`).
 
 The ui job installs the shells the shell-integration tests run (zsh, fish, ksh, mksh, yash, elvish; dash is there):
 a shell that is missing is skipped. Not xonsh: Ubuntu's package brings a pytest plugin that the pytest from pip
 refuses, and the pytest tests would fail. PowerShell is on GitHub's machines, and nushell comes from its newest
-release (`gh release download`): `t_652_shells` and `t_652_completions` run them. The windows job's `win_smoke.py`
+release (`gh release download`): `t_652_shells` and `t_652_completions` run them. GitHub Copilot's own language
+server comes from npm, for `t_653_copilot_real` (signed out: what ned does then; the test sits between ned and the
+server with `mocks/lsptee.py`, which writes down every message). Claude Code's and Gemini CLI's side of the IDE
+link is played by `mocks/ideclient.py` — the WebSocket and the HTTP stream on raw sockets, so `t_653_ide_hostile`
+can also send what no real client would. The windows job's `win_smoke.py`
 runs ned's terminal with cmd.exe and Windows PowerShell (and pwsh), ned's screen read back through `pyte`, and
 checks that each marks its commands.
 

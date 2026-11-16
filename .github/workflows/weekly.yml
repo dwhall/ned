@@ -9,6 +9,9 @@
 #                             week; the inputs that crash one are uploaded
 #   nimony (newest)         — Nim 3's compiler as it is this week, built from its main branch, and ned's Nim 3 tests
 #                             with it: what changed in nimony and what ned must follow shows here, not on a tablet
+#   agents (sandboxed)      — the real agents ned offers (Claude Agent, Codex, Gemini CLI, Copilot) as they are this
+#                             week, each started in ned's sandbox for agents in an empty home: initialize and
+#                             session/new answered, nothing refused — no prompt is ever sent (tests/ai/tagents.py)
 
 name: weekly
 
@@ -91,6 +94,24 @@ jobs:
         with:
           name: fuzz-parsers-found
           path: tests/fuzz/found
+
+  agents:
+    name: agents (sandboxed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: stable
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Build
+        run: nim c -d:release --hints:off -o:ned src/ned.nim
+      - name: The agents in the sandbox
+        run: python3 tests/ai/tagents.py ./ned
 
   nimony:
     name: nimony (newest)

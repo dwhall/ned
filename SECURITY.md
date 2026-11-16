@@ -63,10 +63,25 @@ Only the newest release gets security fixes — updating is always the remedy.
 - **Where there is no sandbox** (no Landlock): `ai.autoApprove` "all" still asks before each of the assistant's
   commands, unless `ai.sandbox` is off (`aiNoSandbox`).
 - **ACP agents in the sandbox** (`ai.agentSandbox`, off by default): the agent's own process under `ned --sandbox
-  --net --keep-env` — files changed only in the project, the caches, its temporary folder, its own home folders and
-  what its entry adds (`acpSandboxed`).
+  --net --keep-env` — files changed only in the project, the caches, npm's cache, its temporary folder, its own home
+  folder (made when missing) and files, and what its entry adds; it reads the certificates its variables name
+  (`agentPolicy`). `ned --sandbox-agent CMD…` is the same policy for an agent run from a terminal.
+- **An agent in a worktree** (`ai/worktree`): `fs/write_text_file` outside the conversation's worktree is refused
+  (`acpWriteFile`); its changes reach your files only through the review, file by file.
+- **The IDE link** (`ai.ideLink`, `ai/idelink`): one listening socket on 127.0.0.1, a 128-bit token from the
+  system's random source in files only you can read (`~/.claude/ide/PORT.lock`, `$TMPDIR/gemini/ide/…`, 0600; the
+  folder 0700 when ned makes it), compared in constant time on every request (WebSocket upgrade:
+  `x-claude-code-ide-authorization`; HTTP: `Authorization: Bearer`). A request with an `Origin` header or a `Host`
+  other than 127.0.0.1/localhost and its port is refused (a web page, DNS rebinding). Limits: 16 connections, 64 KB
+  of headers, 16 MB a body or a message, no chunked bodies, a request not finished in 15 s dropped; masked client
+  frames only, control frames of 125 bytes at most. Its tools act as you do in ned: open files, read selections and
+  problems, save an open file, show a diff — nothing runs. The files are removed when ned quits; those of neds that
+  are gone are swept.
 - **GitHub Copilot** (`ai.copilot`): its language server gets the files you edit, not files of secrets
-  (`aiSecretFile`); the sign-in is Copilot's own (a code typed on GitHub's page).
+  (`aiSecretFile`); the sign-in is Copilot's own (a code typed on GitHub's page). Its telemetry events are redirected to
+  ned (`copilotCapabilities.redirectedTelemetry`) and dropped there, and its telemetry level is "off"; the server
+  still reaches copilot-telemetry.githubusercontent.com a few times a session on its own (seen through a proxy that
+  refused it: no client setting stops that).
 - **Before a commit** (`git.secretsCheck`): what the commit adds is read for secrets (core/secrets, as for the
   assistant) and for files of secrets; one found stops the commit until you say so.
 - **Releases** are signed: `SHA256SUMS.sig` by the key in `src/ned/app/release-signers`

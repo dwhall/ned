@@ -14,6 +14,7 @@ What it does depends on words in the prompt:
   usage            usage_update: the conversation's size and cost
   mode             says the mode it is in
   picture          says whether a picture came with the prompt
+  wtwork           (6.53) works in the session's folder: a file changed, one made, one deleted, one outside refused
   crash            dies, saying "boom" on its error output
   hostile          nonsense of every kind (bad JSON, wrong types, a 2 MB line, requests ned does not know)
   /compact         its own command
@@ -197,6 +198,18 @@ def turn(sid, mid, prompt):
                 stop = 'cancelled'
                 break
             say(sid, 'tick ')
+    if 'wtwork' in words:
+        # (6.53) work in the session's folder (a worktree): a file changed and a new one through ned, one deleted
+        # itself; then a write outside the session's folder, which ned refuses
+        cwd = state.get('cwd') or os.getcwd()
+        p = os.path.join(cwd, 'src', 'demo.nim')
+        r1 = ask('fs/write_text_file', {'sessionId': sid, 'path': p, 'content': open(p).read() + '# by the agent 653\n'})
+        r2 = ask('fs/write_text_file', {'sessionId': sid, 'path': os.path.join(cwd, 'NEW653.md'), 'content': 'new 653\n'})
+        gone = os.path.join(cwd, 'demo.nimble')
+        if os.path.exists(gone): os.remove(gone)
+        r3 = ask('fs/write_text_file', {'sessionId': sid, 'path': '/tmp/outside-653-' + str(os.getpid()), 'content': 'x'})
+        say(sid, 'worked in %s: %s %s outside=%s.' % (os.path.basename(cwd), 'ok' if 'result' in r1 else 'no',
+                                                      'ok' if 'result' in r2 else 'no', 'refused' if 'error' in r3 else 'written'))
     if 'zqwrite' in words:
         # (6.52) the agent writes files itself, not through ned: one in the project, one in its home — ned's sandbox
         # (ai.agentSandbox) lets only the first through
@@ -295,6 +308,7 @@ def main():
                 continue
             state['session'] += 1
             sid = 's%d' % state['session']
+            state['cwd'] = p.get('cwd') or os.getcwd()
             r = {'sessionId': sid, 'configOptions': config()}
             if not V2:
                 r['modes'] = {'currentModeId': state['mode'], 'availableModes': [
