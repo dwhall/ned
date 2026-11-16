@@ -14,6 +14,7 @@ What it does depends on words in the prompt:
   usage            usage_update: the conversation's size and cost
   mode             says the mode it is in
   picture          says whether a picture came with the prompt
+  rvwrite          (6.54) two files written through ned, one after the other (each reviewed with ai.agentReview)
   wtwork           (6.53) works in the session's folder: a file changed, one made, one deleted, one outside refused
   crash            dies, saying "boom" on its error output
   hostile          nonsense of every kind (bad JSON, wrong types, a 2 MB line, requests ned does not know)
@@ -210,6 +211,12 @@ def turn(sid, mid, prompt):
         r3 = ask('fs/write_text_file', {'sessionId': sid, 'path': '/tmp/outside-653-' + str(os.getpid()), 'content': 'x'})
         say(sid, 'worked in %s: %s %s outside=%s.' % (os.path.basename(cwd), 'ok' if 'result' in r1 else 'no',
                                                       'ok' if 'result' in r2 else 'no', 'refused' if 'error' in r3 else 'written'))
+    if 'rvwrite' in words:
+        # (6.54) two files written through ned, one after the other: with ai.agentReview each waits for its review
+        cwd = state.get('cwd') or os.getcwd()
+        r1 = ask('fs/write_text_file', {'sessionId': sid, 'path': os.path.join(cwd, 'review1.txt'), 'content': 'one\n'})
+        r2 = ask('fs/write_text_file', {'sessionId': sid, 'path': os.path.join(cwd, 'review2.txt'), 'content': 'two\n'})
+        say(sid, 'review: r1=%s r2=%s.' % ('ok' if 'result' in r1 else 'no', 'ok' if 'result' in r2 else 'no'))
     if 'zqwrite' in words:
         # (6.52) the agent writes files itself, not through ned: one in the project, one in its home — ned's sandbox
         # (ai.agentSandbox) lets only the first through

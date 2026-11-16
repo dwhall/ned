@@ -115,6 +115,7 @@ include ned/run/checks
 include ned/nim/typingcheck
 include ned/git/repos
 include ned/format/apply
+include ned/ai/netguard
 include ned/lsp/client
 include ned/lsp/renamepreview
 include ned/lsp/handlers

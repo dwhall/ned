@@ -998,6 +998,17 @@ proc acpWriteFile(a: AcpAgent, id, p: JsonNode) =
   if acpWorkDir.len > 0 and not path.startsWith(acpWorkDir & "/"):      # (its worktree only: your files stay yours)
     a.acpReplyErr(id, -32602, "this conversation works in its own worktree, " & acpWorkDir & ": " & path & " is outside it")
     return
+  if sBool("ai.agentReview") and acpWorkDir.len == 0:       # (6.54: each write a diff to accept or reject first)
+    let who = (if a.title.len > 0: a.title elif a.name.len > 0: a.name else: "the agent")
+    proposeDiff(who, path, p{"content"}.getStr, proc(accept: bool, text: string) =
+      if a != acp or a.dead: return                           # (the agent went meanwhile: nobody to answer)
+      if not accept:
+        a.acpReplyErr(id, -32000, "the user rejected this change to " & path)
+        return
+      let (msg, isErr) = toolWriteFile(%*{"path": path, "content": text})
+      if isErr: a.acpReplyErr(id, -32603, msg)
+      else: a.acpReply(id, newJObject()))
+    return
   let (msg, isErr) = toolWriteFile(%*{"path": path, "content": p{"content"}.getStr})
   if isErr: a.acpReplyErr(id, -32603, msg)
   else: a.acpReply(id, newJObject())

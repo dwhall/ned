@@ -67,7 +67,11 @@ Only the newest release gets security fixes — updating is always the remedy.
   folder (made when missing) and files, and what its entry adds; it reads the certificates its variables name
   (`agentPolicy`). `ned --sandbox-agent CMD…` is the same policy for an agent run from a terminal.
 - **An agent in a worktree** (`ai/worktree`): `fs/write_text_file` outside the conversation's worktree is refused
-  (`acpWriteFile`); its changes reach your files only through the review, file by file.
+  (`acpWriteFile`); its changes reach your files only through the review, file by file. The worktree started from
+  your uncommitted changes gets them through `git diff HEAD --binary | git apply` and copies of your untracked files
+  (those git does not ignore) — nothing of yours is changed.
+- **An agent's writes reviewed** (`ai.agentReview`, off): `fs/write_text_file` is answered only after you accept the
+  diff (or your edit of it); rejected, the agent gets an error and nothing is written.
 - **The IDE link** (`ai.ideLink`, `ai/idelink`): one listening socket on 127.0.0.1, a 128-bit token from the
   system's random source in files only you can read (`~/.claude/ide/PORT.lock`, `$TMPDIR/gemini/ide/…`, 0600; the
   folder 0700 when ned makes it), compared in constant time on every request (WebSocket upgrade:
@@ -76,12 +80,17 @@ Only the newest release gets security fixes — updating is always the remedy.
   of headers, 16 MB a body or a message, no chunked bodies, a request not finished in 15 s dropped; masked client
   frames only, control frames of 125 bytes at most. Its tools act as you do in ned: open files, read selections and
   problems, save an open file, show a diff — nothing runs. The files are removed when ned quits; those of neds that
-  are gone are swept.
+  are gone are swept. The port and token are kept for the next start in ned's private folder (`privDir`: 0700, checked to
+  be yours; the file `ide-link` 0600), and used again only while the port is free.
 - **GitHub Copilot** (`ai.copilot`): its language server gets the files you edit, not files of secrets
   (`aiSecretFile`); the sign-in is Copilot's own (a code typed on GitHub's page). Its telemetry events are redirected to
-  ned (`copilotCapabilities.redirectedTelemetry`) and dropped there, and its telemetry level is "off"; the server
-  still reaches copilot-telemetry.githubusercontent.com a few times a session on its own (seen through a proxy that
-  refused it: no client setting stops that).
+  ned (`copilotCapabilities.redirectedTelemetry`) and dropped there, and its telemetry level is "off". The server
+  also reaches copilot-telemetry.githubusercontent.com on its own, which no client setting stops, so with
+  `ai.copilotNoTelemetry` (on) it is started with `HTTPS_PROXY` set to ned's guard (`ned --net-guard`, `ai/netguard`):
+  a process of its own on 127.0.0.1 that answers a CONNECT or a plain request for that host or its subdomains with
+  403 and passes the rest on unread — the TLS inside a CONNECT is between the server and GitHub — straight or through
+  your proxy (`HTTPS_PROXY`, its user and password sent as Proxy-Authorization). Its limits: 64 KB of request
+  headers; it ends when ned does (its standard input closes). Not on Windows.
 - **Before a commit** (`git.secretsCheck`): what the commit adds is read for secrets (core/secrets, as for the
   assistant) and for files of secrets; one found stops the commit until you say so.
 - **Releases** are signed: `SHA256SUMS.sig` by the key in `src/ned/app/release-signers`

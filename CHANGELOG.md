@@ -1,6 +1,39 @@
 # ned changelog
 
-The newest release is described in the [README](README.md#whats-new-in-653). Older releases:
+The newest release is described in the [README](README.md#whats-new-in-654). Older releases:
+
+## What's new in 6.53
+
+**Claude Code and Gemini CLI use ned as their IDE.** Run `claude` or `gemini` in ned's terminal and they know ned
+is there: they see the file and the lines you are on, open files in ned, read the problems ned shows, and each
+change they propose opens as a diff in ned — a accepts it, d rejects it. *AI: send to Claude Code* puts the file and
+the lines you selected in its prompt. Started in another terminal in the project, Claude Code finds ned with `/ide`;
+in Gemini CLI, `/ide enable`. The link is a server on 127.0.0.1 only, each request carries a token only you can
+read, and a request from a web page is turned away (`ai.ideLink`, [The AI assistant](docs/guide/ai.md#claude-code-and-gemini-cli)).
+
+**An agent in a worktree of its own.** *AI: agent in a worktree* starts a conversation with your agent (Claude
+Agent, Codex, Gemini CLI, Copilot) on a branch of its own, from your last commit: it works there while you go on
+editing, and your files are not touched — a write outside its worktree is refused. When it is done, *AI: review the
+agent's branch* lists each file it changed. Open one to see its version beside yours: a takes it into your file
+(*AI: undo* gives yours back), d leaves it. Or merge the whole branch, or remove the worktree and the branch
+([The AI assistant](docs/guide/ai.md#an-agent-in-a-worktree)).
+
+**Agents in the sandbox, from the terminal too.** `ned --sandbox-agent -- claude` runs an agent's own program in
+the sandbox the AI dock's agents use (`ai.agentSandbox`, Linux): with the network, changing files only in the
+project, its own folder in your home (made when it is missing), the caches, npm's cache wherever npm keeps it, and
+the certificates its variables name. Claude Agent, Codex, Gemini CLI and Copilot all start in it
+([Safety](docs/guide/safety.md)).
+
+**Copilot, signed out.** When Copilot's server says you are not signed in, a toast says so once with *Sign in*,
+and no suggestion is asked for until you are. Its telemetry events now come to ned, which drops them.
+
+**The terminal knows nim's options.** As you type `nim c --o`, the terminal suggests `--opt:speed`, `--opt:size`
+and the rest; a value of a few choices comes as each choice (`--mm:orc`). nim's commands come first, and nimble,
+ned, nedfmt, nedls, atlas and testament are suggested what their own `--help` says ([The terminal](docs/guide/terminal.md)).
+
+**Include order.** In a program put together with `include`, a name used in a file that only an import in a file
+included after it brings is now an error as you type — the compiler reads the files in order and would not see
+it there (`include-order`, [Nim IDE](docs/guide/nim.md)).
 
 ## What's new in 6.52.1
 

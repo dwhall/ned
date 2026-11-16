@@ -28,13 +28,20 @@ proc copilotStart(quiet = false): LspServer =
       warn("Copilot needs " & (if c.len > 0: c[0] else: "a command") & " — Node.js 20.8 or newer (Termux: pkg " &
            "install nodejs), or ai.copilotCommand")
     return nil
-  copilotSrv = lspSpawn("copilot", c, secondary = false)
+  var c2 = c
+  let guard = netGuardStart()                                   # (ai.copilotNoTelemetry: its telemetry refused)
+  if guard.len > 0:
+    c2 = @["env", "HTTPS_PROXY=" & guard, "https_proxy=" & guard, "HTTP_PROXY=" & guard, "http_proxy=" & guard,
+           "NO_PROXY=127.0.0.1,localhost", "no_proxy=127.0.0.1,localhost"] & c
+  copilotSrv = lspSpawn("copilot", c2, secondary = false)
   if copilotSrv == nil and not quiet: error("Copilot's language server did not start: " & c.join(" "))
   copilotSrv
 
 proc copilotReady(s: LspServer) =
   ## the server answered initialize: what was waiting for it (the sign-in) goes on
-  s.lspNotify("workspace/didChangeConfiguration", %*{"settings": {"telemetry": {"telemetryLevel": "off"}}})
+  var st = %*{"telemetry": {"telemetryLevel": "off"}}
+  if ngUrl.len > 0: st["http"] = %*{"proxy": ngUrl, "proxyStrictSSL": true}
+  s.lspNotify("workspace/didChangeConfiguration", %*{"settings": st})
   if copilotWant == "signin":
     copilotWant = ""
     runCmd("Copilot: sign in…")

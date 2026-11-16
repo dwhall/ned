@@ -12564,6 +12564,8 @@ def t_653_copilot_real():
     got = open(log).read() if os.path.exists(log) else ''
     check('653 copilot real: … it asked for its settings, and its telemetry is off',
           '< workspace/configuration' in got and '"telemetryLevel": "off"' in got.replace('":"', '": "'), got[-1500:])
+    check('654 copilot real: … and its way to the network is ned\'s guard (its telemetry refused)',
+          re.search(r'"proxy": ?"http://127\.0\.0\.1:\d+"', got) is not None, got[-1500:])
     check('653 copilot real: … its telemetry events come to ned (which drops them)',
           wait_until(lambda: '< uedTelemetry' in open(log).read() or '< codeSnippetTelemetry' in open(log).read(), 10),
           got[:600])
@@ -12590,11 +12592,13 @@ def ide_files(kind):
     fs = sorted(glob.glob(d + ('/*.lock' if kind == 'claude' else '/gemini-ide-server-*.json')))
     return fs[-1] if fs else None
 
-def ide_start(f='src/demo.nim', **kw):
-    # ned with the IDE link on, its files in this test's folders (never your ~/.claude or /tmp)
+def ide_start(f='src/demo.nim', files=None, **kw):
+    # ned with the IDE link on, its files in this test's folders (never your ~/.claude or /tmp); `files`: name → text,
+    # written in the project first
     for d in [TMP + '/claude653', TMP + '/tmp653']:
         shutil.rmtree(d, ignore_errors=True); os.makedirs(d)
     setup({"ai.ideLink": True, **kw})
+    for n, t in (files or {}).items(): open(W + '/' + n, 'w').write(t)
     start(f, w=130, h=34, env_extra='CLAUDE_CONFIG_DIR=%s/claude653 TMPDIR=%s/tmp653' % (TMP, TMP))
     wait_until(lambda: ide_files('claude') and ide_files('gemini'), 8)
     lock = json.load(open(ide_files('claude')))
@@ -12986,6 +12990,131 @@ def t_653_terminal_options():
         check('653 terminal: … a tap takes it', 'nim c --mm:orc' in screen(), screen())
     keys('C-u')
 
+def t_654_ide_restart():
+    # 6.54: the IDE link keeps its port and its token when ned starts again — a terminal that outlived the restart
+    # (claude started in it) still finds ned — and columns are counted as Claude Code counts them (UTF-16)
+    sys.path.insert(0, MOCKS)
+    import ideclient
+    lock = ide_start('ar654.nim', files={'ar654.nim': 'let s = "سلام عليكم 😀" # x\n'})
+    port, tok = int(os.path.basename(ide_files('claude'))[:-5]), lock['authToken']
+    keys('C-q'); time.sleep(0.6)
+    if wait_for('Unsaved changes', 2): keys('n')
+    wait_until(lambda: os.path.exists(W + '/exit'), 10)
+    os.remove(W + '/exit')
+    tm('kill-server'); time.sleep(0.3)
+    start('ar654.nim', w=130, h=34, env_extra='CLAUDE_CONFIG_DIR=%s/claude653 TMPDIR=%s/tmp653' % (TMP, TMP))
+    wait_until(lambda: ide_files('claude'), 8)
+    lock2 = json.load(open(ide_files('claude')))
+    port2 = int(os.path.basename(ide_files('claude'))[:-5])
+    check('654 ide restart: the same port and token after a restart', (port2, lock2['authToken']) == (port, tok),
+          '%s %s / %s %s' % (port, tok[:6], port2, lock2['authToken'][:6]))
+    c = ideclient.Ws(port, tok)
+    r = c.call('initialize', {"protocolVersion": "2025-06-18", "capabilities": {}})
+    check('654 ide restart: … the old token still connects', c.status == 101 and r and 'result' in r, str(r))
+    keys('C-g'); text('1'); keys('Enter'); keys('End'); keys('S-Home')
+    time.sleep(0.5)
+    cur = c.tool('getCurrentSelection')
+    want = len('let s = "سلام عليكم 😀" # x'.encode('utf-16-le')) // 2      # (the emoji: two units, one character)
+    check('654 ide utf16: columns in UTF-16 units (Arabic and an emoji)', cur.get('selection', {}).get('end', {}).get('character')
+          == want, str(cur))
+    c.close()
+
+def t_654_ide_edit():
+    # 6.54: a proposed change opened to edit (e): Ctrl+S accepts it as edited — Claude Code gets the edited text; and
+    # Gemini CLI's too
+    sys.path.insert(0, MOCKS)
+    import ideclient
+    lock = ide_start()
+    port, tok = int(os.path.basename(ide_files('claude'))[:-5]), lock['authToken']
+    c = ideclient.Ws(port, tok)
+    c.call('initialize', {"protocolVersion": "2025-06-18", "capabilities": {}})
+    path = W + '/src/demo.nim'
+    c.nid += 1; rid = c.nid
+    c.send({"jsonrpc": "2.0", "id": rid, "method": "tools/call", "params": {"name": "openDiff", "arguments": {
+        "old_file_path": path, "new_file_path": path, "new_file_contents": "proposed 654\n", "tab_name": "t654"}}})
+    wait_for('proposed by Claude Code', 8)
+    check('654 ide edit: the diff says e edits', 'e: edit' in screen(), screen())
+    text('e'); time.sleep(0.6)
+    check('654 ide edit: e opens the proposal in a tab of its own', 'Proposed: demo.nim' in screen() and
+          'proposed 654' in screen(), screen())
+    keys('C-g'); text('1'); keys('Enter'); keys('Home'); text('edited '); time.sleep(0.2)
+    keys('C-s'); time.sleep(0.6)
+    r = c.recv(8)
+    while r is not None and r.get('id') != rid:
+        r = c.recv(8)
+    res = r and r['result']['content']
+    check('654 ide edit: Ctrl+S accepts it, edited', res and res[0]['text'] == 'FILE_SAVED' and
+          res[1]['text'] == 'edited proposed 654\n', str(r))
+    check('654 ide edit: … its tab closed, the file left to Claude Code', 'Proposed: demo.nim' not in screen() and
+          'proposed 654' not in ftext('src/demo.nim'), screen())
+    c.close()
+    g = json.load(open(ide_files('gemini')))
+    ev = ideclient.Sse(g['port'], g['authToken'])
+    ideclient.rpc(g['port'], g['authToken'], 'initialize')
+    ideclient.rpc(g['port'], g['authToken'], 'tools/call', {"name": "openDiff", "arguments": {"filePath": path,
+                  "newContent": "gemini 654\n"}})
+    # (the request's connection closes once it is answered: the diff stays — its answer goes on the event stream)
+    time.sleep(1.0)
+    check('654 ide edit: Gemini CLI\'s diff stays when its request\'s connection closes',
+          wait_for('proposed by Gemini CLI', 8), screen())
+    text('e'); time.sleep(0.6)
+    keys('C-g'); text('1'); keys('Enter'); keys('End'); text(' (edited)'); keys('C-s')
+    m = ev.next('ide/diffAccepted', 8)
+    check('654 ide edit: … and Gemini CLI gets its edited text', m and m['params']['content'] == 'gemini 654 (edited)\n',
+          str(m) + '\n' + screen())
+    ev.close()
+
+def t_654_agent_review():
+    # 6.54: ai.agentReview — each file an ACP agent writes is a diff first: one edited and accepted, one rejected;
+    # the agent waits for each answer and is told it
+    log = acp_setup(more={"ai.agentReview": True})
+    start('src/demo.nim', w=140, h=40); time.sleep(0.8)
+    keys('M-c'); time.sleep(0.5)
+    text('rvwrite'); keys('Enter')
+    ok = wait_for('proposed by', 15)
+    check('654 review: the agent\'s write shown as a diff first', ok and 'review1.txt' in screen() and
+          not os.path.exists(W + '/review1.txt'), screen())
+    text('e'); time.sleep(0.6)
+    keys('C-g'); text('1'); keys('Enter'); keys('Home'); text('edited '); keys('C-s'); time.sleep(0.8)
+    ok = wait_for('proposed by', 10)
+    check('654 review: edited and accepted: written as edited; then the next one', ok and
+          os.path.exists(W + '/review1.txt') and ftext('review1.txt') == 'edited one\n' and 'review2.txt' in screen(),
+          screen())
+    text('d'); time.sleep(0.6)
+    ok = wait_until(lambda: re.search(r'review: r1=ok r2=no', dock_text(screen())), 15)
+    check('654 review: rejected: not written, and the agent is told', ok and not os.path.exists(W + '/review2.txt'),
+          dock_text(screen()))
+
+def t_654_worktree_mine():
+    # 6.54: the agent's worktree from your uncommitted changes too — they are its starting point, so its review shows
+    # only what the agent did; and several worktrees kept, each to review
+    log = acp_setup()
+    start('src/demo.nim', w=140, h=40); time.sleep(0.8)
+    keys('C-g'); text('3'); keys('Enter'); text('# mine 654'); keys('Enter'); keys('C-s'); time.sleep(0.4)
+    palette('AI: agent in a worktree'); time.sleep(0.6)
+    check('654 worktree: with changes not committed, it asks where to start from', 'uncommitted changes' in screen(), screen())
+    keys('Enter'); time.sleep(1.0)                            # (the first choice: your commit and your changes)
+    s = dock_text(screen())
+    check('654 worktree: … the chat says so', 'and your uncommitted changes' in s, s)
+    text('wtwork'); keys('Enter')
+    ok = wait_until(lambda: re.search(r'worked in agent-[0-9-]+: ok ok outside=refused', dock_text(screen())), 20)
+    wt = [l for l in subprocess.run(['git', 'worktree', 'list'], cwd=W, capture_output=True, text=True).stdout.splitlines()
+          if 'ned-worktrees' in l]
+    path = wt[0].split()[0] if wt else ''
+    check('654 worktree: your change is in it', ok and path and '# mine 654' in open(path + '/src/demo.nim').read(), str(wt))
+    palette("AI: review the agent's branch"); time.sleep(0.8)
+    text('src/demo'); time.sleep(0.3); keys('Enter'); time.sleep(0.8)
+    sc = screen()
+    check('654 worktree: the review shows the agent\'s change, not yours as its', 'by the agent 653' in sc and
+          sc.count('mine 654') <= 2, sc)
+    keys('Escape'); text('d'); time.sleep(0.5); keys('Escape'); time.sleep(0.3)
+    time.sleep(1.1)                                           # (the next worktree is named by the second)
+    palette('AI: agent in a worktree'); time.sleep(0.6)
+    keys('Down'); keys('Enter'); time.sleep(1.0)              # (the second: your last commit only)
+    palette("AI: review the agent's branch"); time.sleep(0.8)
+    sc = screen()
+    check('654 worktree: several kept: the review asks which', "The agents' worktrees" in sc and sc.count('ned-agent/') >= 2, sc)
+
 def t_652_compare_folders():
     # 6.52: File: compare two folders — the files that differ (not .git's), each opening as a diff; asked again: the
     # same two listed at once
@@ -13072,4 +13201,5 @@ tests = [t_edit_save_undo, t_find_replace, t_multicursor, t_project_search, t_te
          t_652_no_sandbox, t_652_shells, t_652_completions, t_652_terminal_help, t_652_agent_sandbox, t_652_copilot,
          t_652_compare_folders, t_652_mcp_login,
          t_653_copilot_real, t_653_ide_claude, t_653_ide_gemini, t_653_ide_gemini_real, t_653_ide_hostile,
-         t_653_agent_worktree, t_653_terminal_options]
+         t_653_agent_worktree, t_653_terminal_options,
+         t_654_ide_restart, t_654_ide_edit, t_654_agent_review, t_654_worktree_mine]

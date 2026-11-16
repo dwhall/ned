@@ -32,7 +32,7 @@ proc hexSave(b: Buffer, path = ""): bool =
 
 proc saveBuffer(b: Buffer, path = "", force = false): bool =
   ## Ctrl+S for one buffer; true when it was written. Special tabs go their own way (multibuffer, commit message, rebase
-  ## plan, signature plan, plugin tab, hex editor). Without force, a file that changed on disk, is read-only or is being
+  ## plan, signature plan, a proposed change, plugin tab, hex editor). Without force, a file that changed on disk, is read-only or is being
   ## edited by another ned is only saved after a confirmation. With a new path (Save as) the buffer takes that name and
   ## language; with no name at all it asks for one. Then: plugins' before-save events, format on save, trailing-space
   ## and final-newline rules, the line ending and encoding it was read in, and a crash-safe write after a local-history
@@ -42,6 +42,7 @@ proc saveBuffer(b: Buffer, path = "", force = false): bool =
   if b.id in commitBufs and path.len == 0: return doCommitFromBuffer(b)
   if b.id in rebaseBufs and path.len == 0: return doRebaseFromBuffer(b)
   if b.id in sigPlans and path.len == 0: return doSignatureFromBuffer(b)
+  if path.len == 0 and ideProposalSave(b.id): return true   # (a proposed change — its diff or its text edited: accepted)
   if path.len == 0 and b.path.len == 0 and plugWrites(b): return true   # (a plugin's tab: the folder view)
   if b.hex != nil:
     return b.hexSave(path)                           # (the hex editor: the bytes as they are)

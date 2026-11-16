@@ -312,6 +312,9 @@ proc ideDiffKey(bufId: int, k: Key): bool                            # ai/idelin
 proc ideDiffForget(bufId: int)                                       # ai/idelink.nim
 proc cmdIdeMention()                                                 # ai/idelink.nim
 proc cmdIdeStatus()                                                  # ai/idelink.nim
+proc proposeDiff(who, path, text: string, cb: proc(accept: bool, text: string) {.closure.})   # ai/idelink.nim
+proc ideProposalSave(bufId: int): bool                              # ai/idelink.nim
+proc ideDiffDecide(bufId: int, accept: bool)                         # ai/idelink.nim
 proc wtTurnEnded()                                                   # ai/worktree.nim
 proc cmdWorktreeChat()                                               # ai/worktree.nim
 proc cmdWorktreeReview()                                             # ai/worktree.nim

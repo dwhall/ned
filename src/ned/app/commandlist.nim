@@ -792,6 +792,9 @@ proc initCommands() =
   add("Copilot: sign in…", "GitHub Copilot's suggestions (ai.copilot): a code to type on GitHub's page",
       cmdCopilotSignIn())
   add("Copilot: sign out", "", cmdCopilotSignOut())
+  add("AI: accept the proposed change", "the change in this tab (Claude Code, Gemini CLI, an agent): a, or Ctrl+S",
+      ideDiffDecide(buf().id, true))
+  add("AI: reject the proposed change", "the change in this tab is not made: d, or close the tab", ideDiffDecide(buf().id, false))
   add("AI: send to Claude Code", "the file and the lines selected, as an @-mention in Claude Code's prompt", cmdIdeMention())
   add("AI: IDE link (Claude Code, Gemini CLI)", "where they find ned, and who is connected (ai.ideLink)", cmdIdeStatus())
   add("AI: agent in a worktree", "a new conversation with the agent on a branch of its own: your files are not touched",

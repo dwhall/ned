@@ -329,10 +329,6 @@ proc compItemOf(it: NxItem, nx: int): CompItem =
   CompItem(label: it.label, insert: it.insert, detail: (if kw: "" else: it.detail),
            kind: (if kw: 14 else: nxKindIcon(it.kind)), rank: it.rank, nx: nx)
 
-var
-  compRestFor: NxRest            # the rest of the scope's items the list items below were made for
-  compRestItems: seq[CompItem]
-
 proc compNxAt(nx: int): ptr NxItem =
   ## the index item behind a list item: compNx (> 0), the shared rest of the scope's (< 0)
   if nx > 0 and nx <= compNx.len: addr compNx[nx - 1]
@@ -360,14 +356,10 @@ proc engineComplete(b: Buffer, manual: bool): bool =
   var items = newSeqOfCap[CompItem](c.items.len + (if c.rest != nil: c.rest.items.len else: 0) + 8)
   for i, it in c.items: items.add compItemOf(it, i + 1)
   if c.rest != nil:
-    # the rest of the scope's names (thousands in a big program): their list items made once while it stays the
-    # same, and copied here — one string each
-    if compRestFor != c.rest:
-      compRestFor = c.rest
-      compRestItems.setLen(0)
-      for k, it in c.rest.items: compRestItems.add compItemOf(it, -(k + 1))
-    for k in 0 ..< compRestItems.len:
-      if k notin c.restHidden: items.add compRestItems[k]
+    # the rest of the scope's names (thousands in a big program): one string each, their details made when shown —
+    # made here each time (6.54: a copy kept of them took as long to copy and 3 MB more)
+    for k in 0 ..< c.rest.items.len:
+      if k notin c.restHidden: items.add compItemOf(c.rest.items[k], -(k + 1))
   if c.member and compStartCol > 0:
     items.add postfixItems(b, c, p.line, compStartCol - 1)
   if not c.member:

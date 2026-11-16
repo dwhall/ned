@@ -1081,6 +1081,14 @@ suite "headers that test the compiler (macOS's)":
     check gs == @["shout"]
     removeDir(d)
 
+  test "an #if thousands of brackets, ! or ?: deep: not known, and no crash (the fuzzer's, 6.54)":
+    for e in ["(".repeat(100_000) & "1" & ")".repeat(100_000), "!".repeat(100_000) & "1",
+              "1?".repeat(50_000) & "1" & ":0".repeat(50_000)]:
+      let f = cxParse("#if " & e & "\nint inside;\n#endif\nint after;\n", "/deep.c")
+      var names: seq[string]
+      for s in f.syms: names.add s.name
+      check "after" in names
+
   test "__has_include of a header not in the compiler's own folders: false — the header it guards is not missing":
     let d = getTempDir() / "ned-tcindex-hasinc"
     createDir(d / "sys")

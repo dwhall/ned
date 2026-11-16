@@ -358,7 +358,7 @@ the Coder Nerd Font Mono, at twice the size, framed, in 256 colours. The font is
 | job | what it runs |
 |---|---|
 | unit | the unit tests on Linux and macOS |
-| plugins | ned built; `tplugins.py --native`, `tbundled.py --native`; the references compared with what ned makes; `apiref.py --check`; `links.py` |
+| plugins | ned built; `tplugins.py --native`, `tbundled.py --native`; `tnetguard.py` (the guard Copilot goes through); the references compared with what ned makes; `apiref.py --check`; `links.py` |
 | nedls | `tnedls.py`; `parsecheck.sh` when the Nim has its compiler sources |
 | ui | the UI suite in four parts at once, with the optional tools installed and `NED_TEST_SSH=1` |
 | windows | the unit tests of ned's own logic, the three programs built natively, `win_smoke.py` |
@@ -381,7 +381,9 @@ release (`gh release download`): `t_652_shells` and `t_652_completions` run them
 server comes from npm, for `t_653_copilot_real` (signed out: what ned does then; the test sits between ned and the
 server with `mocks/lsptee.py`, which writes down every message). Claude Code's and Gemini CLI's side of the IDE
 link is played by `mocks/ideclient.py` — the WebSocket and the HTTP stream on raw sockets, so `t_653_ide_hostile`
-can also send what no real client would. The windows job's `win_smoke.py`
+can also send what no real client would. `tests/ai/tnetguard.py` runs `ned --net-guard` between a stand-in for
+your proxy and a local echo server: the telemetry hosts refused, the rest passed on with your proxy's sign-in,
+nonsense and 70 KB of headers turned away, and the guard gone when its standard input closes. The windows job's `win_smoke.py`
 runs ned's terminal with cmd.exe and Windows PowerShell (and pwsh), ned's screen read back through `pyte`, and
 checks that each marks its commands.
 

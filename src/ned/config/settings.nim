@@ -678,9 +678,15 @@ proc initSettingDefs() =
        "answers sooner. The assistant can run the tool again")
   defS("AI", "ai.inlineCompletion", %false, "Grey inline suggestions while you type (Tab accepts) — sends code on every pause")
   defS("AI", "ai.inlineCompletionDelay", %700, "Pause in ms before an inline suggestion is requested")
+  defS("AI", "ai.copilotNoTelemetry", %true, "Copilot's language server reaches the network through a small proxy " &
+       "of ned's that refuses its telemetry (copilot-telemetry.githubusercontent.com) and passes the rest on, through " &
+       "your own proxy when HTTPS_PROXY names one (not on Windows)")
+  defS("AI", "ai.agentReview", %false, "Each file an agent of the AI dock (ACP: Claude Agent, Codex …) writes is shown " &
+       "first as a diff, to accept (a), reject (d) or edit (e): the agent waits for your answer")
   defS("AI", "ai.ideLink", %true, "Claude Code and Gemini CLI use ned as their IDE: started in ned's terminal they " &
-       "see the file and the selection you are on, and show the changes they propose here as diffs to accept (a) or " &
-       "reject (d). A server on 127.0.0.1 only, and only for them: each request carries a token only you can read")
+       "see the file and the selection you are on, and show the changes they propose here as diffs to accept (a), " &
+       "reject (d) or edit first (e). A server on 127.0.0.1 only, and only for them: each request carries a token " &
+       "only you can read")
   defS("AI", "ai.copilot", %false, "GitHub Copilot writes the grey suggestions as you type (Tab takes them) and the " &
        "next edits, instead of the model — through its language server, which needs Node.js 20.8 or newer; run " &
        "Copilot: sign in… once (a Copilot plan on your GitHub account)")

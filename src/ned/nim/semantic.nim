@@ -4,12 +4,14 @@
 
 type SemImports = ref object
   ## what the names from the rest of the scope are (imports, system, the program's other files) — shared by the
-  ## files that see the same, and made a slice at a time: a big program's hundred thousand names took 30–50 ms at once
+  ## files that see the same, and made a slice at a time: a big program's hundred thousand names took 30–50 ms at once.
+  ## Kept by the names' hashes, not the names (6.54: a third of what they took)
+  # shortcut: two names with one hash share a colour (a 64-bit hash: not seen; on a 32-bit system, rarely)
   key: uint64
   rich: bool
-  kinds: Table[string, TokKind]
-  fields, calls, macros: HashSet[string]
-  globalVars, globalLets, deprecated, undeprecated: HashSet[string]
+  kinds: Table[Hash, TokKind]
+  fields, calls, macros: HashSet[Hash]
+  globalVars, globalLets, deprecated, undeprecated: HashSet[Hash]
   done: bool
   at: NxRefsAt                   # (how far through the scope's names it got)
   scope: NxScope                 # (the scope gone through, while it is made)
@@ -48,10 +50,14 @@ func semKindOfSym(k: NxKind): TokKind =
   of nxField: tkProperty
   else: tkText
 
-proc semAdd(kinds: var Table[string, TokKind], fields, calls, macros: var HashSet[string], s: NxSym) =
+proc semKey[K](n: string): K =
+  ## a normalized name as the colour tables keep it: the name (this file's), or its hash (the rest of the scope's)
+  when K is string: n else: hash(n)
+
+proc semAdd[K](kinds: var Table[K, TokKind], fields, calls, macros: var HashSet[K], s: NxSym) =
   ## records a declaration in the colour tables: its name is noted as a field, as a routine that can be called (and as a
   ## template or macro), and its colour is kept if the name has none yet
-  let n = nxNorm(s.name)
+  let n = semKey[K](nxNorm(s.name))
   case s.kind
   of nxField: fields.incl n
   of NxRoutineKinds:
@@ -85,7 +91,7 @@ proc semImportStep(m: SemImports, budgetMs: int): bool =
     if r.file.path == m.own: continue
     semAdd(m.kinds, m.fields, m.calls, m.macros, r.sym)
     if m.rich:
-      let n = nxNorm(r.sym.name)
+      let n = hash(nxNorm(r.sym.name))
       if "deprecated" in r.sym.pragmas: m.deprecated.incl n
       elif r.sym.kind in NxRoutineKinds + {nxType, nxConst}: m.undeprecated.incl n
       if not r.sym.local:
@@ -203,11 +209,11 @@ proc semKind(m: SemMap, w: string): TokKind =
   ## the colour of a name: from this file's declarations, else from what the rest of the scope declares; plain text if
   ## neither knows it
   result = m.kinds.getOrDefault(w, tkText)
-  if result == tkText and m.imp != nil: result = m.imp.kinds.getOrDefault(w, tkText)
+  if result == tkText and m.imp != nil: result = m.imp.kinds.getOrDefault(hash(w), tkText)
 
 template impHas(m: SemMap, field: untyped, w: string): bool =
   ## whether the rest of the scope (once it is made) has the name in the given set
-  m.imp != nil and w in m.imp.field
+  m.imp != nil and hash(w) in m.imp.field
 
 proc semParamsAt(m: SemMap, line: int): seq[string] =
   ## the parameters of the routines that `line` is inside (an inner one's too)

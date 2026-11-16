@@ -29,7 +29,8 @@ type
     gemini: bool
     bufId: int                          # the diff's tab
     who: string                         # who proposes it (said in the tab and the messages)
-    cb: proc(accept: bool) {.closure.}  # ned's own proposals (an agent's worktree): what deciding does
+    cb: proc(accept: bool, text: string) {.closure.}   # ned's own proposals (an agent's worktree, its writes
+                                                       # reviewed): what deciding does, with the text as accepted
 
 var
   ideFd: cint = -1
@@ -109,27 +110,49 @@ proc ideSweep() =
             removeFile(p)
     except CatchableError: discard
 
+proc ideBind(port: int): cint =
+  ## a listening socket on 127.0.0.1:port (-1 when the port is taken)
+  let fd = posix.socket(AF_INET, SOCK_STREAM, 0)
+  if fd.cint < 0: return -1
+  when not defined(windows):
+    var one: cint = 1                                # (bound again at once after a restart: no wait for TIME_WAIT)
+    discard setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, addr one, SockLen(sizeof(one)))
+  var a: Sockaddr_in
+  a.sin_family = TSa_Family(AF_INET)
+  a.sin_port = htons(uint16(port))
+  a.sin_addr.s_addr = inet_addr("127.0.0.1")
+  if posix.bindSocket(fd, cast[ptr SockAddr](addr a), SockLen(sizeof(a))) == 0 and posix.listen(fd, 8) == 0:
+    return fd.cint
+  discard posix.close(fd.cint)
+  -1
+
 proc ideStart() =
-  ## the server, once (ai.ideLink): a port between 41000 and 41999, a new token, the files that point to it
+  ## the server, once (ai.ideLink): the port and token of the last time when the port is free — a terminal that
+  ## outlived a restart keeps working — else a new port between 41000 and 41999 and a new token; then the files
+  ## that point to it
   if ideFd >= 0 or ideTried or wkWorkerMode or not sBool("ai.ideLink"): return
   ideTried = true
-  ideToken = ctlNewKey()
-  if ideToken.len == 0: return
-  let start = int(getMonoTime().ticks mod 1000)
-  for k in 0 ..< 60:
-    let port = 41000 + (start + k * 17) mod 1000
-    let fd = posix.socket(AF_INET, SOCK_STREAM, 0)
-    if fd.cint < 0: return
-    var a: Sockaddr_in
-    a.sin_family = TSa_Family(AF_INET)
-    a.sin_port = htons(uint16(port))
-    a.sin_addr.s_addr = inet_addr("127.0.0.1")
-    if posix.bindSocket(fd, cast[ptr SockAddr](addr a), SockLen(sizeof(a))) == 0 and posix.listen(fd, 8) == 0:
-      ideFd = fd.cint
-      idePort = port
-      break
-    discard posix.close(fd.cint)
-  if ideFd < 0: return
+  let keep = privDir() / "ide-link"                  # ("PORT TOKEN", only yours)
+  try:
+    let w = readFile(keep).splitWhitespace
+    if w.len == 2 and w[1].len == 32 and w[1].allCharsInSet(HexDigits):
+      let port = parseInt(w[0])
+      if port in 41000 .. 41999:
+        let fd = ideBind(port)
+        if fd >= 0: (ideFd, idePort, ideToken) = (fd, port, w[1])
+  except CatchableError: discard
+  if ideFd < 0:
+    ideToken = ctlNewKey()
+    if ideToken.len == 0: return
+    let start = int(getMonoTime().ticks mod 1000)
+    for k in 0 ..< 60:
+      let port = 41000 + (start + k * 17) mod 1000
+      let fd = ideBind(port)
+      if fd >= 0:
+        (ideFd, idePort) = (fd, port)
+        break
+    if ideFd < 0: return
+    discard idePrivFile(keep, $idePort & " " & ideToken)
   discard fcntl(ideFd, F_SETFD, FD_CLOEXEC)
   setNonBlock(ideFd)
   ideSweep()
@@ -231,15 +254,15 @@ proc ideBufOf(path: string): Buffer =
   for b in bufs:
     if b.path.len > 0 and (b.path == p or b.path == path): return b
 
-# a place as the tools read one (a line and a character, from 0)
-proc idePosJ(p: Pos): JsonNode = %*{"line": p.line, "character": p.col}
+# a place as the tools read one: a line and a character from 0, characters in UTF-16 units as in VS Code
+proc idePosJ(b: Buffer, p: Pos): JsonNode =
+  %*{"line": p.line, "character": (if p.line < b.lines.len: toU16(b.lines[p.line], p.col) else: p.col)}
 
 proc ideSelection(b: Buffer): JsonNode =
   ## the tab's selection as Claude Code reads it (lines and characters from 0)
-  # shortcut: characters are counted in bytes, not UTF-16 units (Claude Code only shows them)
   let (a, e) = b.primary.range
   %*{"success": true, "text": (if a == e: "" else: b.getText(a, e)), "filePath": b.path, "fileUrl": uriFromPath(b.path),
-     "selection": {"start": idePosJ(a), "end": idePosJ(e), "isEmpty": a == e}}
+     "selection": {"start": idePosJ(b, a), "end": idePosJ(b, e), "isEmpty": a == e}}
 
 proc ideOffPos(b: Buffer, off: int): Pos =
   ## the place of a byte in the whole text
@@ -279,11 +302,15 @@ proc ideOpenFile(a: JsonNode): JsonNode =
 proc ideDiagJ(path: string): JsonNode =
   ## a file's problems as Claude Code reads them
   var ds = newJArray()
+  let b = ideBufOf(path)
+  proc u16(l, c: int): int =
+    ## a column in UTF-16 units, when the file is open (its lines at hand); else as it is
+    if b != nil and l >= 0 and l < b.lines.len: toU16(b.lines[l], c) else: c
   for d in diagsFor(path):
     ds.add %*{"message": d.msg, "severity": ["Error", "Error", "Warning", "Information", "Hint"][clamp(d.sev, 0, 4)],
               "source": (if d.src.len > 0: d.src else: "ned"),
-              "range": {"start": {"line": d.line, "character": d.col},
-                        "end": {"line": max(d.line, d.eline), "character": max(0, d.ecol)}}}
+              "range": {"start": {"line": d.line, "character": u16(d.line, d.col)},
+                        "end": {"line": max(d.line, d.eline), "character": u16(max(d.line, d.eline), max(0, d.ecol))}}}
   %*{"uri": uriFromPath(path), "diagnostics": ds}
 
 proc ideDiagnostics(a: JsonNode): JsonNode =
@@ -304,8 +331,6 @@ proc ideDiagnostics(a: JsonNode): JsonNode =
       if j["diagnostics"].len > 0: res.add j
   ideText($res)
 
-proc ideDiffDecide(bufId: int, accept: bool)
-
 proc ideDiffShow(who, p, text: string): int =
   ## a proposed change shown as a diff in a tab of its own — the file as it is on the left, the proposal on the right
   ## — with a toast to accept it: the tab's buffer id
@@ -321,7 +346,7 @@ proc ideDiffShow(who, p, text: string): int =
     result = s.replace("\r\n", "\n").split('\n')
     if result.len > 1 and result[^1].len == 0: result.setLen(result.len - 1)
   openDiffView(who & ": " & extractFilename(p), lines(old), extractFilename(p) & " (now)", nil, lines(text),
-               "proposed by " & who & " — a: accept · d: reject", lang)
+               "proposed by " & who & " — a: accept · d: reject · e: edit", lang)
   let bid = buf().id
   toast(who & " proposes a change to " & extractFilename(p) & " — a accepts, d rejects", 3, "Accept", proc() =
     ideDiffDecide(bid, true), ttl = 60_000)
@@ -332,10 +357,13 @@ proc ideDiffOpen(c: IdeConn, reqId: JsonNode, path, text, tab: string, gemini: b
   let p = absProjectPath(path)
   let who = if gemini: "Gemini CLI" else: "Claude Code"
   let bid = ideDiffShow(who, p, text)
-  ideDiffs.add IdeDiff(conn: c, reqId: reqId, path: p, text: text, tab: tab, gemini: gemini, bufId: bid, who: who)
+  # (Gemini CLI's answer goes out on its event stream, not the request's connection — which may close at once)
+  ideDiffs.add IdeDiff(conn: (if gemini: nil else: c), reqId: reqId, path: p, text: text, tab: tab, gemini: gemini,
+                       bufId: bid, who: who)
 
-proc proposeDiff(who, path, text: string, cb: proc(accept: bool) {.closure.}) =
-  ## a change ned itself proposes (an agent's worktree), as a diff to accept (a) or reject (d): `cb` does it
+proc proposeDiff(who, path, text: string, cb: proc(accept: bool, text: string) {.closure.}) =
+  ## a change ned itself proposes (an agent's worktree, an agent's write under ai.agentReview), as a diff to accept
+  ## (a), reject (d) or edit first (e): `cb` does it, with the text as accepted
   let bid = ideDiffShow(who, path, text)
   ideDiffs.add IdeDiff(path: path, text: text, bufId: bid, who: who, cb: cb)
 
@@ -347,13 +375,13 @@ proc ideDiffEnd(i: int, accept: bool, answer = true, closeTab = true) =
   if bi >= 0: closeBufferAt(bi)
   needRender = true
   if d.cb != nil:
-    if answer: d.cb(accept)
+    if answer: d.cb(accept, d.text)
     return
-  if answer and d.conn != nil and not d.conn.gone:
-    if d.gemini:
-      if accept: ideNotify(false, "ide/diffAccepted", %*{"filePath": d.path, "content": d.text})
-      else: ideNotify(false, "ide/diffRejected", %*{"filePath": d.path})
-    elif d.reqId != nil:
+  if answer and d.gemini:
+    if accept: ideNotify(false, "ide/diffAccepted", %*{"filePath": d.path, "content": d.text})
+    else: ideNotify(false, "ide/diffRejected", %*{"filePath": d.path})
+  elif answer and d.conn != nil and not d.conn.gone:
+    if d.reqId != nil:
       let res = if accept: %*{"content": [{"type": "text", "text": "FILE_SAVED"}, {"type": "text", "text": d.text}]}
                 else: %*{"content": [{"type": "text", "text": "DIFF_REJECTED"}, {"type": "text", "text": d.tab}]}
       d.conn.ideSend(%*{"jsonrpc": "2.0", "id": d.reqId, "result": res})
@@ -368,12 +396,44 @@ proc ideDiffDecide(bufId: int, accept: bool) =
       return
   info("No proposed change in this tab")
 
+proc ideDiffEdit(bufId: int) =
+  ## e in a proposed change's tab: the proposal in a tab of its own to edit — Ctrl+S accepts it as it is then,
+  ## closing the tab rejects it
+  for d in ideDiffs.mitems:
+    if d.bufId != bufId: continue
+    let ob = ideBufOf(d.path)
+    let b = openScratch("Proposed: " & extractFilename(d.path) & " (" & d.who & ")", d.text,
+                        if ob != nil: ob.lang else: detectLang(d.path, ""))
+    b.readOnly = false
+    d.bufId = b.id
+    let old = bufs.find(bufById(bufId))
+    if old >= 0: closeBufferAt(old)                   # (the diff's tab: its proposal now in the new one)
+    curBuf = max(0, bufs.find(b))
+    toast("Edit the proposed change: Ctrl+S accepts it as it is then, closing the tab rejects it", 3, ttl = 20_000)
+    needRender = true
+    return
+
+proc ideProposalSave(bufId: int): bool =
+  ## Ctrl+S in a proposed change's tab — its diff, or its text being edited: accepted (true), as it stands
+  for i, d in ideDiffs:
+    if d.bufId != bufId: continue
+    let b = bufById(bufId)
+    if b != nil and not diffViews.hasKey(bufId):
+      var t = b.allText
+      if d.text.endsWith("\n") and not t.endsWith("\n"): t.add "\n"
+      ideDiffs[i].text = t
+    ideDiffDecide(bufId, true)
+    return true
+  false
+
 proc ideDiffKey(bufId: int, k: Key): bool =
-  ## the keys of a proposed change's tab: a accepts, d rejects (false: not such a tab, or another key)
-  if k.kind != kChar or k.mods != {} or k.ch notin [ord('a'), ord('d')]: return false
+  ## the keys of a proposed change's tab: a accepts, d rejects, e opens it to edit (false: not such a tab, or another
+  ## key)
+  if k.kind != kChar or k.mods != {} or k.ch notin [ord('a'), ord('d'), ord('e')]: return false
   for d in ideDiffs:
     if d.bufId == bufId:
-      ideDiffDecide(bufId, k.ch == ord('a'))
+      if k.ch == ord('e'): ideDiffEdit(bufId)
+      else: ideDiffDecide(bufId, k.ch == ord('a'))
       return true
   false
 
@@ -707,7 +767,8 @@ proc ideContext(): JsonNode =
   if cb.path.len > 0:
     let (a, e) = cb.primary.range
     var f = %*{"path": cb.path, "timestamp": int(now * 1000), "isActive": true,
-               "cursor": {"line": cb.primary.head.line + 1, "character": cb.primary.head.col + 1}}
+               "cursor": {"line": cb.primary.head.line + 1,
+                          "character": toU16(cb.lines[cb.primary.head.line], cb.primary.head.col) + 1}}
     if a != e:
       let t = cb.getText(a, e)
       f["selectedText"] = %t[0 ..< utf8Cut(t, min(t.len, 16384))]

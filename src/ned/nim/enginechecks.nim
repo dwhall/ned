@@ -2605,8 +2605,8 @@ const NedRules* = [  # (rule, what it finds, its severity unless .ned/lint.json 
    "module NimScript cannot run imported in a script", 2),
   ("switch", "a compiler switch the compiler does not have, in config.nims or a .nimble (or one it says otherwise now: --gc, --threads:on)", 2),
   ("emit-nim", "a `name` in an emit that no Nim name is, or a routine called there with the wrong number of arguments", 1),
-  ("include-order", "in a file another one includes, a name only an import in a file included after it brings: the " &
-   "compiler does not see it there", 1),
+  ("include-order", "a name only an import the compiler reads later brings — in a file included after, further down " &
+   "the file, after the include in the file that includes it: undeclared where it is used", 1),
   ("async", "async code: a Future discarded, await outside an async proc, what blocks the event loop in one", 2),
   ("raises", "a {.raises.} list that leaves out what the body can raise", 2),
   ("gcsafe", "a {.gcsafe.} routine that uses a garbage-collected global", 2),
@@ -2781,9 +2781,11 @@ proc ecIncludeOrder(f: NxFile, b: Buffer, code: seq[string], res: var seq[Diag])
   ## (6.53) a file another one includes: a name only an import in a file included after it brings — undeclared
   ## where the compiler reads it (nxIncludeOrder)
   for (l, c, w, src) in nxIncludeOrder(f, code, 0, b.lines.high):
+    let why = if src == b.path: "it is imported further down this file: move the import up"
+              else: "only an import in " & extractFilename(src) & " brings it, and the compiler reads that after " &
+                    "this point: import it here, or move that import (or the include) first"
     res.add Diag(line: l, col: c, eline: l, ecol: c + w.len, sev: 1, src: "ned", rule: "include-order",
-                 msg: "undeclared identifier: '" & w & "' — only " & extractFilename(src) & " imports it, and it is " &
-                      "included after this file: import it here, or include " & extractFilename(src) & " first")
+                 msg: "undeclared identifier: '" & w & "' — " & why)
 
 proc engineChecksFor(b: Buffer): seq[Diag] =
   ## the engine's own checks of a Nim buffer as it is now. In an open file "can be a func" may take several rounds

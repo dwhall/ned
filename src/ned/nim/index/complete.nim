@@ -76,7 +76,8 @@ type
     label*, detail*: string
     kind*: NxKind
     refs*: seq[NxRef]          # the declarations behind the item (overloads), for documentation
-    local*: NxSym              # a local (refs empty)
+    local*: ref NxSym          # a local (refs empty) — nil for a keyword or another word; a ref: a big program's
+                               #   list holds tens of thousands of items, and this is rarely set (6.54)
     rank*: int                 # 0 local · 1 this module · 2 imports · 3 system · 4 guesses
     ufcs*: bool                # offered after `.` as a method-call: the first parameter is the receiver
     insert*: string            # text to insert when it is not the label (`field: ` in a constructor)
@@ -100,6 +101,11 @@ type
     recvShape*: string         # what the receiver is, for postfix completion (nxPostfixShape)
     enumVals*: seq[string]     # its values, when it is an enum
     recvIsType*: bool          # the receiver is a type or a module (Color., strutils.)
+
+converter nxBoxSym*(s: NxSym): ref NxSym =
+  ## a declaration given to an item as its own (`NxItem(local: s)`): boxed
+  new(result)
+  result[] = s
 
 const NxKeywords* = ["addr", "and", "as", "asm", "bind", "block", "break", "case", "cast", "concept", "const",
   "continue", "converter", "defer", "discard", "distinct", "div", "do", "elif", "else", "end", "enum", "except",
@@ -902,8 +908,9 @@ proc nxRankExpected*(items: var seq[NxItem], f: NxFile, sc: NxScope, want: strin
     if it.detail == "keyword" or it.kind == nxModule: continue
     var fits = false
     if it.refs.len == 0:
+      if it.local == nil: continue
       # the item's own declaration, a local one
-      template s: untyped = it.local                 # (no copy of the declaration)
+      template s: untyped = it.local[]               # (no copy of the declaration)
       if s.kind in NxRoutineKinds: fits = nxFitsExpected(sc, memo, s.ret)
       elif s.kind == nxType: fits = not plain and nxNorm(s.name) == wb
       elif s.kind in {nxField, nxParam} and it.insert.len > 0: fits = false     # (`name: ` / `name = `)
@@ -1555,7 +1562,7 @@ proc nxDocItem*(it: NxItem, maxOverloads = 6): string =
   ## then each different documentation text, up to `maxOverloads` of them. A forward declaration and its body count as
   ## one routine
   if it.refs.len == 0:
-    let s = it.local
+    let s = if it.local != nil: it.local[] else: NxSym()
     if s.kind == nxModule and s.value.len > 0:
       let g = nxLoad(s.value)
       return "```nim\nimport " & s.name & "\n```\n" & (if g != nil and g.doc.len > 0: nxRstToMd(g.doc) & "\n\n" else: "") &

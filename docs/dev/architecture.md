@@ -158,6 +158,15 @@ allocator: musl's kept 50 MB with the same file (Nim's 65), more than Nim's afte
 longer. `-d:nedNimAlloc` builds on Nim's everywhere, `-d:useMalloc` on the system's everywhere. Whatever the allocator,
 what keeps memory low is not taking it: see [Big texts: no copies on the way](pitfalls.md#big-texts-no-copies-on-the-way).
 
+Where the editor's memory goes is measured with valgrind's massif on a build with the system's allocator and debug
+information (`nim c -d:release -d:useMalloc --debugger:native`), run through `tests/perf/rounds.py`'s session in
+slow motion; `ms_print` names the routine behind each allocation. Under valgrind `/proc/self/exe` is valgrind itself,
+so the engine worker does not start and the editor does its work: profile a copy of the tree whose `wkExe` returns
+`getAppFilename()`. In 6.54 that found, of 41 MB in use after the session, 11 MB in the completion list's items
+(`NxItem` held a whole `NxSym` for the few items that are locals: now a `ref`, 280 → 104 bytes an item), 6 MB in the
+colours of the names a file sees (`SemImports`, now by hash) and 3 MB in a second copy of the list's items: 26 MB
+in use since, with completion as quick as before.
+
 ## Starting
 
 `main` in [`app/main.nim`](../../src/ned/app/main.nim), in order:

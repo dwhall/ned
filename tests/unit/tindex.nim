@@ -1138,14 +1138,85 @@ suite "include order (6.53)":
     writeFile(dir / "io5" / "late.nim", "import std/strutils\n")
     writeFile(dir / "io5" / "top5.nim", "include early\ninclude late\n")
     check nxIncludeOrder(nxLoad(dir / "io5" / "early.nim"), lines(dir / "io5" / "early.nim"), 0, 5).len == 0
+  test "by position (6.54): an import further down the file, the top file before an include, a method call":
+    createDir(dir / "io6")
+    writeFile(dir / "io6" / "m6.nim", "proc a(s: string): seq[string] = split(s, ';')\nimport std/strutils\n" &
+              "proc b(s: string): seq[string] = split(s, ';')\n")
+    var got = nxIncludeOrder(nxLoad(dir / "io6" / "m6.nim"), lines(dir / "io6" / "m6.nim"), 0, 5)
+    check got.len == 1 and got[0][0] == 0 and got[0][3].endsWith("m6.nim")
+    createDir(dir / "io7")
+    writeFile(dir / "io7" / "later7.nim", "import std/strutils\n")
+    writeFile(dir / "io7" / "top7.nim", "echo split(\"a b\")\ninclude later7\necho split(\"c d\")\n")
+    got = nxIncludeOrder(nxLoad(dir / "io7" / "top7.nim"), lines(dir / "io7" / "top7.nim"), 0, 5)
+    check got.len == 1 and got[0][0] == 0 and got[0][3].endsWith("later7.nim")
+    createDir(dir / "io8")
+    writeFile(dir / "io8" / "early.nim", "proc a(s: string): seq[string] = s.split(',')\n")
+    writeFile(dir / "io8" / "late.nim", "import std/strutils\n")
+    writeFile(dir / "io8" / "top8.nim", "include early\ninclude late\n")
+    got = nxIncludeOrder(nxLoad(dir / "io8" / "early.nim"), lines(dir / "io8" / "early.nim"), 0, 5)
+    check got.len == 1 and got[0][2] == "split" and got[0][1] == 35
+    createDir(dir / "io9")
+    writeFile(dir / "io9" / "early.nim", "type T = object\n  split: int\nproc a(t: T): int = t.split\n")
+    writeFile(dir / "io9" / "late.nim", "import std/strutils\n")
+    writeFile(dir / "io9" / "top9.nim", "include early\ninclude late\n")
+    check nxIncludeOrder(nxLoad(dir / "io9" / "early.nim"), lines(dir / "io9" / "early.nim"), 0, 5).len == 0
+    createDir(dir / "io10")
+    writeFile(dir / "io10" / "early.nim", "proc a(s: string): string = strip(s)\n")
+    writeFile(dir / "io10" / "late.nim", "from std/strutils import split\n")
+    writeFile(dir / "io10" / "top10.nim", "include early\ninclude late\n")
+    check nxIncludeOrder(nxLoad(dir / "io10" / "early.nim"), lines(dir / "io10" / "early.nim"), 0, 5).len == 0
+    # (a runnableExamples block above the import: compiled on its own, with its own import — std/tables's)
+    createDir(dir / "io11")
+    writeFile(dir / "io11" / "m11.nim", "runnableExamples:\n  import std/strutils\n  echo split(\"a b\")\n\n" &
+              "import std/strutils\nproc b(s: string): seq[string] = split(s, ';')\n")
+    check nxIncludeOrder(nxLoad(dir / "io11" / "m11.nim"), lines(dir / "io11" / "m11.nim"), 0, 9).len == 0
+  proc code(p: string): seq[string] =
+    ## the file's lines with comments and strings blanked (as the editor's checks pass them; simple: enough here)
+    var triple = false
+    var inBlock = 0
+    for l in readFile(p).split('\n'):
+      var o = newString(l.len)
+      for i in 0 ..< o.len: o[i] = ' '
+      var i = 0
+      var inStr = false
+      while i < l.len:
+        if triple:
+          if l.continuesWith("\"\"\"", i): (triple = false; i += 3) else: inc i
+        elif inBlock > 0:
+          if l.continuesWith("]#", i): (dec inBlock; i += 2)
+          elif l.continuesWith("#[", i): (inc inBlock; i += 2)
+          else: inc i
+        elif inStr:
+          if l[i] == '\\': i += 2
+          elif l[i] == '"': (inStr = false; inc i)
+          else: inc i
+        elif l.continuesWith("\"\"\"", i): (triple = true; i += 3)
+        elif l.continuesWith("#[", i) or l.continuesWith("##[", i): (inc inBlock; i += 2)
+        elif l[i] == '#': break
+        elif l[i] == '"': (inStr = true; inc i)
+        elif l[i] == '\'' and i + 2 < l.len and (l[i + 2] == '\'' or l[i + 1] == '\\'): i += (if l[i + 1] == '\\': 4 else: 3)
+        else: (o[i] = l[i]; inc i)
+      result.add o
   test "… and ned's own program has none (nedls includes ned.nim, then its own files)":
     let src = currentSourcePath().parentDir.parentDir.parentDir / "src"
     var n = 0
     for p in walkDirRec(src / "ned"):
       if not p.endsWith(".nim") or "/plugins/lib/" in p: continue
-      let got = nxIncludeOrder(nxLoad(p), lines(p), 0, 100_000)
+      let got = nxIncludeOrder(nxLoad(p), code(p), 0, 100_000)
       for g in got: echo "  ", p, ":", g
       n += got.len
     check n == 0
+  test "… nor Nim's own library (its runnableExamples, import lists over lines, locals, defined(), raise, fields)":
+    # (the library compiles: a name flagged there is a wrong one)
+    if nxLibDir.len == 0: skip()
+    else:
+      var n, files = 0
+      for p in walkDirRec(nxLibDir):
+        if not p.endsWith(".nim") or "/deprecated/" in p or "/js/" in p: continue
+        inc files
+        let got = nxIncludeOrder(nxLoad(p), code(p), 0, 100_000)
+        for g in got: echo "  ", p, ":", g
+        n += got.len
+      check files > 100 and n == 0
 
 removeDir(dir)

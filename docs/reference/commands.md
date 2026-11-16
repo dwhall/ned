@@ -9,6 +9,7 @@ Every command of the palette (Ctrl+E, or Ctrl+P and `>`), with its key or what i
 | Add cursor above | Alt+K |
 | Add cursor below | Alt+J |
 | AI assistant | Alt+C |
+| AI: accept the proposed change | the change in this tab (Claude Code, Gemini CLI, an agent): a, or Ctrl+S |
 | AI: add doc comments |  |
 | AI: agent in a worktree | a new conversation with the agent on a branch of its own: your files are not touched |
 | AI: agent's mode… |  |
@@ -35,6 +36,7 @@ Every command of the palette (Ctrl+E, or Ctrl+P and `>`), with its key or what i
 | AI: open the request log | what was sent to the model and what came back (ai.log) |
 | AI: plan a change, then do it step by step… |  |
 | AI: regenerate last reply |  |
+| AI: reject the proposed change | the change in this tab is not made: d, or close the tab |
 | AI: review staged changes (findings in Problems) |  |
 | AI: review the agent's branch | each file the agent changed in its worktree, to take or leave; merge; remove |
 | AI: review the assistant's changes… |  |

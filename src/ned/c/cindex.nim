@@ -1037,6 +1037,7 @@ proc cxPPValue(ts: seq[string], look: CxLook): (bool, int64) =
   ## A name left is 0 when it is known not to be a macro, else the answer is not known
   var p = 0
   var bad = false
+  var depth = 0                                     # (how deep in brackets and - ~ ! the operand being read is)
   proc num(t: string): CxVal =
     ## a number of an #if's expression as a value — decimal, 0x, 0b or octal, with u and l suffixes (u makes it
     ## unsigned) —; the expression is marked bad for a floating-point number or one that is not a number
@@ -1100,11 +1101,13 @@ proc cxPPValue(ts: seq[string], look: CxLook): (bool, int64) =
     ## one operand of an #if's expression: a parenthesised expression, a number, a character, true or false (C++), or a
     ## name, with - + ~ ! applied. A name left after expansion is 0 when it is known not to be a macro, else not known
     ## (a call of an unknown macro is skipped with its arguments)
-    if p >= ts.len:
+    if p >= ts.len or depth > 200:            # (thousands of brackets deep: no real #if, and the stack would run out)
       bad = true
       return
     let t = ts[p]
     inc p
+    inc depth
+    defer: dec depth
     case t
     of "(":
       result = expr(0)
@@ -1159,6 +1162,11 @@ proc cxPPValue(ts: seq[string], look: CxLook): (bool, int64) =
     ## an expression whose operators bind at least as tightly as prec (precedence climbing), with ?: and the logical
     ## operators known when one side decides; any other operator with an unknown side is not known. It is unsigned
     ## arithmetic when either side is; dividing by zero is not known
+    if depth > 200:
+      bad = true
+      return
+    inc depth
+    defer: dec depth
     result = unary()
     while not bad and p < ts.len:
       let op = ts[p]

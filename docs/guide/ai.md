@@ -212,6 +212,12 @@ where it is (nvm, volta, `~/.local` …). One that needs more says so when it fa
 places. `ned --sandbox-agent -- claude` (or `codex`, `gemini` …) runs an agent's own program in the same sandbox,
 from any terminal; `--write` and `--read` add folders, `--explain` says what it may do.
 
+**Each write as a diff first** (`ai.agentReview`, off): a file the agent writes through ned opens as a diff — the
+file as it is on the left, the agent's version on the right — and nothing is written until you decide: **a** writes
+it, **d** tells the agent you rejected it, **e** opens its version to edit, and Ctrl+S then writes it as you left
+it. The agent waits for your answer. It is for agents that write without asking, or modes that let them; an agent
+in a worktree writes there as it likes, and its changes come to you through the review.
+
 The dock's top row shows the agent — a tap is *AI: agent…*: its state, its last words when it fails, signing in,
 restarting it —, its mode (a tap changes it), and the conversation's size and cost when the agent says them.
 *AI: choose model…* and `/model` list the agent's models, *AI: agent's options…* the rest of what it offers (effort
@@ -231,15 +237,19 @@ its entry starts it so).
 *AI: agent in a worktree* starts a new conversation with your agent on a branch of its own — a git worktree made
 from your last commit, kept in the repository's own folder (`.git/ned-worktrees`), so it is not in the file tree,
 the search or the project's files. The agent works there while you go on editing: what it reads, edits and runs is
-the worktree's, and your files are not touched — a write it asks ned for outside the worktree is refused. Changes
-you have not committed are not in it.
+the worktree's, and your files are not touched — a write it asks ned for outside the worktree is refused. With
+changes you have not committed, ned asks whether it starts from them too: then they are copied into the worktree
+(your new files with them) and committed there first, so that the review shows only what the agent did.
 
 When it has finished an answer that changed something, a toast offers *Review*. *AI: review the agent's branch*
 commits what it changed on its branch (`ned-agent/…`), then lists each file: ± changed, + new, − deleted. A file
 opens with its version beside yours: a takes it into your file — through its tab when it is open, so *AI: undo the
-assistant's changes…* gives yours back — and d leaves it; the list comes back for the next one. *Merge the whole
-branch* is `git merge` of it; *Remove the worktree and the branch* throws away what you did not take. A new chat
-(Ctrl+L) goes back to the project.
+assistant's changes…* gives yours back —, d leaves it, and e opens its version to edit first (Ctrl+S takes it as you
+left it); the list comes back for the next one. *Merge the whole branch* is `git merge` of it; *Remove the worktree
+and the branch* throws away what you did not take. A new chat (Ctrl+L) goes back to the project.
+
+Each worktree stays until you remove it, so you can start another while one waits to be reviewed: the conversation
+works in the newest, and *AI: review the agent's branch* asks which one, newest first. One agent works at a time.
 
 ## Claude Code and Gemini CLI
 
@@ -252,15 +262,19 @@ Code finds it with `/ide`, and Gemini CLI connects once `/ide enable` is set. Th
 - read the problems ned shows (the compiler's, the language servers', ned's own checks), and whether a file has
   unsaved changes — and save it when they need to;
 - show each change they propose as a diff in a tab of its own, the file as it is on the left and the change on the
-  right: **a** accepts it, **d** rejects it (or the toast's *Accept*); closing the tab rejects it. They write the
-  file themselves, and its tab follows.
+  right: **a** accepts it, **d** rejects it (or the toast's *Accept*); closing the tab rejects it. **e** opens the
+  change to edit first: Ctrl+S accepts it as you left it, and the tool writes your version. They write the file
+  themselves, and its tab follows.
 
 *AI: send to Claude Code* puts the file and the lines you selected (or the cursor's line) in Claude Code's prompt as
 an @-mention. *AI: IDE link* says where they find ned and who is connected.
 
 ned listens on 127.0.0.1 only, on a port of its own, and tells the tools where in files only you can read —
 `~/.claude/ide/PORT.lock` (or `$CLAUDE_CONFIG_DIR/ide`) and `$TMPDIR/gemini/ide/` — with a token every request must
-carry; they go when ned quits. A request without it, or one from a web page (an `Origin`, or another `Host`), is
+carry; they go when ned quits. The port and the token stay the same when ned starts again (while no other program
+has taken the port), so a Claude Code that was running in a terminal kept across the restart finds ned again.
+Lines and columns are counted as the tools count them (UTF-16), so a selection on a line with Arabic or an emoji
+is where they think it is. A request without it, or one from a web page (an `Origin`, or another `Host`), is
 turned away, so a site you visit cannot reach ned through it.
 
 ## In the editor
@@ -301,9 +315,11 @@ or go to. *Copilot: next edit* asks at any time.
   installed, else through `npx`, so it needs Node.js 20.8 or newer (Termux: `pkg install nodejs`).
   `ai.copilotCommand` starts it another way.
 - Copilot sees the files you edit, as its own editor plug-ins do — not files of secrets (`ai.redactSecrets`), nor a
-  file not saved yet. `ai.copilotNextEdits` off stops the asking after each suggestion. ned tells its server that
-  telemetry is off and asks it to send its telemetry events to ned, which drops them (the server may still reach
-  GitHub's telemetry address now and then on its own).
+  file not saved yet. `ai.copilotNextEdits` off stops the asking after each suggestion.
+- **No telemetry** (`ai.copilotNoTelemetry`, on): ned tells its server that telemetry is off and has it send its
+  telemetry events to ned, which drops them; and the server reaches the network through a small proxy of ned's on
+  127.0.0.1 (`ned --net-guard`), which refuses GitHub's telemetry address and passes everything else on — through
+  your own proxy when `HTTPS_PROXY` names one. Not on Windows.
 
 ## ned's engine for other agents: `nedls --mcp`
 

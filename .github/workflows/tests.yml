@@ -65,6 +65,8 @@ jobs:
           nim c -d:release --hints:off -o:ned src/ned.nim
           python3 tests/plugins/tplugins.py ./ned --native
           python3 tests/plugins/tbundled.py --native
+      - name: The network guard Copilot goes through (ned --net-guard)
+        run: python3 tests/ai/tnetguard.py ./ned
       - name: The documentation (references made from the sources, links)
         run: |
           export XDG_CONFIG_HOME=$(mktemp -d)        # (no settings of anyone's in the references)

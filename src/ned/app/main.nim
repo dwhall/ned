@@ -926,6 +926,7 @@ proc main() =
       of "--update": quit updateMain(cl[ai .. ^1])
       of "--sandbox": quit sandboxMain(cl[ai .. ^1])     # (sys/landlock.nim: a command limited by Landlock)
       of "--sandbox-agent": quit agentSandboxMain(cl[ai .. ^1])   # (ai/acp.nim: an agent's program in its sandbox)
+      of "--net-guard": quit netGuardMain(cl[ai .. ^1])  # (ai/netguard.nim: Copilot's way out, its telemetry refused)
       of "--c-lines": quit cLinesMain(cl[ai .. ^1])      # (debug/clines.nim: a step of the debugger's build)
       of "--term-host":                           # (a kept terminal's shell: term/termhost.nim)
         when not defined(windows): termHostMain(cl[ai .. ^1])
