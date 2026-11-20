@@ -398,7 +398,8 @@ proc pickerKey(k: Key) =
       return
     if k.kind == kEnter and (
       when defined(windows):
-        (pickQuery.len > 1 and pickQuery[0] in {'a'..'z', 'A'..'Z'} and pickQuery[1] == ':')
+        ((pickQuery.len > 0 and pickQuery[0] in {'/', '~'}) or
+          (pickQuery.len > 1 and pickQuery[0] in {'a'..'z', 'A'..'Z'} and pickQuery[1] == ':'))
       else:
         (pickQuery.len > 0 and pickQuery[0] in {'/', '~'})
       ):
